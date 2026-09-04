@@ -75,14 +75,6 @@
     font-family: var(--font-body); font-size: 12.5px; padding: 6px 12px; border-radius: 999px;
     border: 1px solid var(--accent); background: var(--bg-elevated); color: var(--accent); cursor: pointer;
   }
-  .size-picker .sp-custom { display: flex; gap: 6px; }
-  .size-picker .sp-custom input {
-    flex: 1; font-size: 13px; padding: 6px 10px; border-radius: var(--radius-sm); border: 1px solid var(--line-strong);
-  }
-  .size-picker .sp-custom button {
-    font-family: var(--font-body); font-size: 12.5px; padding: 6px 12px; border-radius: var(--radius-sm);
-    border: none; background: var(--accent); color: var(--accent-ink); cursor: pointer;
-  }
   .size-picker .sp-cancel {
     display: block; margin-top: 8px; font-family: var(--font-mono); font-size: 11px; color: var(--accent);
     background: none; border: none; cursor: pointer; text-decoration: underline;
@@ -261,17 +253,7 @@
             <div class="product-gallery" id="productGallery"><p class="empty-state">還沒有已儲存的商品，可以用下面「手動新增」。</p></div>
             <div class="size-picker" id="sizePicker" style="display:none;">
               <div class="sp-title">「<span id="spItemName"></span>」選尺寸</div>
-              <div class="sp-quick" id="spQuickSizes">
-                <button type="button" data-size="均碼">均碼</button>
-                <button type="button" data-size="S">S</button>
-                <button type="button" data-size="M">M</button>
-                <button type="button" data-size="L">L</button>
-                <button type="button" data-size="XL">XL</button>
-              </div>
-              <div class="sp-custom">
-                <input type="text" id="spCustomSize" placeholder="自訂尺寸">
-                <button type="button" id="spCustomAdd">加入</button>
-              </div>
+              <div class="sp-quick" id="spVariants"></div>
               <button type="button" id="spCancel" class="sp-cancel">✕ 取消</button>
             </div>
           </div>
@@ -364,6 +346,13 @@
   }
 
   /* ---------- Product gallery + size picker + cart ---------- */
+  /* 同一個商品名稱可能存了好幾筆(每個尺寸各自一筆、各自算價錢)，
+     圖庫用「商品名稱」分組成一張卡片，點下去如果只有一種尺寸就直接加入，
+     有多種尺寸才跳出來選，選哪個就是用那個尺寸自己算出來的成本/售價。 */
+
+  function parseSizes(sizesStr) {
+    return (sizesStr || '').split(/[,，、]/).map(function (s) { return s.trim(); }).filter(Boolean);
+  }
 
   function renderGallery() {
     var el = $('productGallery');
@@ -373,23 +362,42 @@
     }
     el.innerHTML = '';
     allProducts.forEach(function (p) {
+      var countInCart = cart.filter(function (c) { return c.productId === p.id; }).length;
+
       var card = document.createElement('div');
       card.className = 'gallery-card';
-      var countInCart = cart.filter(function (c) { return c.productId === p.id; }).length;
       card.innerHTML =
         (p.photo_url ? '<img src="' + escapeHtml(p.photo_url) + '" alt="">' : '<div class="gc-placeholder">🖼️</div>') +
         '<div class="gc-name">' + escapeHtml(p.name || '未命名商品') + '</div>' +
         '<div class="gc-price">NT$' + fmt(p.final_price) + '</div>' +
         (countInCart > 0 ? '<div class="gc-count">' + countInCart + '</div>' : '');
-      card.addEventListener('click', function () { openSizePicker(p); });
+      card.addEventListener('click', function () {
+        var sizes = parseSizes(p.sizes);
+        if (sizes.length === 0) {
+          addProductToCart(p, '');
+        } else {
+          openSizePicker(p, sizes);
+        }
+      });
       el.appendChild(card);
     });
   }
 
-  function openSizePicker(product) {
+  function openSizePicker(product, sizes) {
     pendingProduct = product;
     $('spItemName').textContent = product.name || '未命名商品';
-    $('spCustomSize').value = '';
+    var el = $('spVariants');
+    el.innerHTML = '';
+    sizes.forEach(function (s) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = s;
+      btn.addEventListener('click', function () {
+        addProductToCart(product, s);
+        closeSizePicker();
+      });
+      el.appendChild(btn);
+    });
     $('sizePicker').style.display = '';
     $('sizePicker').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
@@ -412,17 +420,6 @@
     renderGallery();
   }
 
-  $('spQuickSizes').addEventListener('click', function (e) {
-    var btn = e.target.closest('button[data-size]');
-    if (!btn || !pendingProduct) return;
-    addProductToCart(pendingProduct, btn.dataset.size);
-    closeSizePicker();
-  });
-  $('spCustomAdd').addEventListener('click', function () {
-    if (!pendingProduct) return;
-    addProductToCart(pendingProduct, $('spCustomSize').value.trim());
-    closeSizePicker();
-  });
   $('spCancel').addEventListener('click', closeSizePicker);
 
   $('manualAddBtn').addEventListener('click', function () {

@@ -182,6 +182,11 @@
         </div>
 
         <div class="product-name-row">
+          <label>可選尺寸<span class="hint">選填，用逗號分隔，例如 S,M,L,均碼；價錢都一樣，只是先定義好有哪些尺寸可以選</span></label>
+          <input type="text" id="productSizes" placeholder="例如：S,M,L,均碼">
+        </div>
+
+        <div class="product-name-row">
           <label>商品照片<span class="hint">選填，之後在銷售紀錄可以點圖選這個商品</span></label>
           <label class="photo-drop">
             <input type="file" id="photoInput" accept="image/*">
@@ -445,7 +450,7 @@
       row.innerHTML =
         thumbHtml +
         '<div class="si-text">' +
-          '<div class="si-name">' + escapeHtml(it.name || '未命名商品') + '<span class="si-cat-badge">' + escapeHtml(it.category_label) + '</span></div>' +
+          '<div class="si-name">' + escapeHtml(it.name || '未命名商品') + '<span class="si-cat-badge">' + escapeHtml(it.category_label) + '</span>' + (it.sizes ? '<span class="si-cat-badge">' + escapeHtml(it.sizes) + '</span>' : '') + '</div>' +
           '<div class="si-sub">實際成本 NT$' + fmt(it.actual_cost) + ' → 售價 NT$' + fmt(it.final_price) + ' · 淨利率 ' + Math.round(it.margin) + '% · ' + dateStr + '</div>' +
         '</div>' +
         '<div class="si-actions">' +
@@ -472,6 +477,7 @@
 
   function fillFormFromItem(it) {
     $('productName').value = it.name || '';
+    $('productSizes').value = it.sizes || '';
     $('rmbPrice').value = it.rmb_price;
     $('rmbShip').value = it.rmb_ship;
     $('fxRate').value = it.fx_rate;
@@ -536,6 +542,7 @@
     exitEditMode();
     clearPhoto();
     $('productName').value = '範例商品';
+    $('productSizes').value = '';
     $('rmbPrice').value = 20; $('rmbShip').value = 0; $('fxRate').value = 4.5;
     $('crossShip').value = 15; $('packaging').value = 5; $('paymentFee').value = 10; $('domesticShip').value = 60;
     manualPrice.value = '';
@@ -548,6 +555,7 @@
     fields.forEach(function (id) { $(id).value = ''; });
     $('fxRate').value = 4.5;
     $('productName').value = '';
+    $('productSizes').value = '';
     manualPrice.value = '';
     currentCategory = null;
     catDefs.forEach(function (d) { d.el.classList.remove('active'); });
@@ -559,6 +567,7 @@
   $('saveItem').addEventListener('click', async function () {
     var payload = {
       name: $('productName').value.trim(),
+      sizes: $('productSizes').value.trim(),
       categoryKey: currentCategory ? currentCategory.key : '',
       categoryLabel: currentCategory ? currentCategory.label : '未分類',
       rmbPrice: num('rmbPrice'), rmbShip: num('rmbShip'), fxRate: num('fxRate'),

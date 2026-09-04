@@ -22,11 +22,13 @@ create table if not exists priced_items (
   profit numeric not null default 0,
   margin numeric not null default 0,
   photo_url text,
+  sizes text,
   created_at timestamptz not null default now()
 );
 
--- 1b. 如果 priced_items 表已經建立過，單獨執行這行加照片欄位：
+-- 1b. 如果 priced_items 表已經建立過，單獨執行這兩行：
 alter table priced_items add column if not exists photo_url text;
+alter table priced_items add column if not exists sizes text;
 
 -- 2.（舊版，保留給還沒升級的人參考，新安裝可以跳過）單一商品的銷售紀錄
 create table if not exists sales_records (

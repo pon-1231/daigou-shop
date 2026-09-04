@@ -31,7 +31,8 @@ function buildRow(body) {
     final_price: Number(body.finalPrice) || 0,
     profit: Number(body.profit) || 0,
     margin: Number(body.margin) || 0,
-    photo_url: body.photoUrl || null
+    photo_url: body.photoUrl || null,
+    sizes: body.sizes ? String(body.sizes).slice(0, 200) : null
   };
 }
 
