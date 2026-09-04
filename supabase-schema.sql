@@ -36,13 +36,15 @@ create table if not exists sales_records (
   profit numeric not null default 0,
   note text not null default '',
   order_status text not null default '待付款',
+  ship_by date,
   sold_at date not null default current_date,
   created_at timestamptz not null default now()
 );
 
--- 2b. 如果 sales_records 表已經建立過（第一次設定之後才加這個欄位），
---     單獨執行下面這行就好，上面 create table 那段會被跳過：
+-- 2b. 如果 sales_records 表已經建立過（第一次設定之後才加這些欄位），
+--     單獨執行下面這兩行就好，上面 create table 那段會被跳過：
 alter table sales_records add column if not exists order_status text not null default '待付款';
+alter table sales_records add column if not exists ship_by date;
 
 -- 這個工具是後端(Express 伺服器)用 service_role 金鑰連線,不會把 Supabase 金鑰交給瀏覽器,
 -- 所以不需要另外設定 RLS 政策;service_role 本來就會繞過 RLS。

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>銷售紀錄 · 代購賣場工具</title>
+<title>銷售紀錄 · NAN｜推し研究所</title>
 <link rel="stylesheet" href="/shared.css">
 <style>
   .layout { display: grid; grid-template-columns: 380px 1fr; gap: 22px; align-items: start; }
@@ -76,12 +76,38 @@
   .pb-row .pb-name { font-weight: 600; }
   .pb-row .pb-sub { font-size: 11.5px; color: var(--ink-soft); font-family: var(--font-mono); }
   .pb-row .pb-profit { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 700; }
+
+  .status-overview { margin-bottom: 22px; }
+  .status-overview summary {
+    cursor: pointer; font-weight: 700; font-size: 14px; padding: 4px 0; outline: none;
+    display: flex; align-items: center;
+  }
+  .so-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 10px; }
+  .so-tile {
+    padding: 12px 14px; border-radius: var(--radius-sm); border: 1px solid var(--line);
+    background: var(--bg-elevated);
+  }
+  .so-tile .so-label { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+  .so-tile .so-value { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 20px; font-weight: 700; }
+  .so-tile .so-sub { font-size: 11px; color: var(--ink-soft); margin-top: 2px; }
+  .so-tile.s-待付款 { background: var(--warn-soft); }
+  .so-tile.s-待付款 .so-label, .so-tile.s-待付款 .so-value { color: var(--warn); }
+  .so-tile.s-已付款, .so-tile.s-已出貨 { background: var(--accent-soft); }
+  .so-tile.s-已付款 .so-label, .so-tile.s-已付款 .so-value,
+  .so-tile.s-已出貨 .so-label, .so-tile.s-已出貨 .so-value { color: var(--accent); }
+  .so-tile.s-已完成 { background: var(--good-soft); }
+  .so-tile.s-已完成 .so-label, .so-tile.s-已完成 .so-value { color: var(--good); }
+  .so-tile.s-overdue { background: var(--bad-soft); }
+  .so-tile.s-overdue .so-label, .so-tile.s-overdue .so-value { color: var(--bad); }
+
+  .ship-by-note { font-size: 11.5px; color: var(--ink-soft); font-family: var(--font-mono); }
+  .ship-by-note.overdue { color: var(--bad); font-weight: 700; }
 </style>
 </head>
 <body>
 <div class="page">
   <nav class="topnav">
-    <div class="brand">📦 代購賣場工具</div>
+    <div class="brand">📦 NAN｜推し研究所 代購賣場工具</div>
     <div class="tabs">
       <a href="/pricing.html">定價計算機</a>
       <a href="/records.html" class="active">銷售紀錄</a>
@@ -104,6 +130,11 @@
     <div class="stat-tile"><div class="st-label">平均淨利率</div><div class="st-value" id="statAvgMargin">0%</div></div>
   </div>
 
+  <details class="status-overview" id="statusOverview" open>
+    <summary>訂單狀態總覽</summary>
+    <div class="so-grid" id="statusOverviewGrid"></div>
+  </details>
+
   <details class="product-breakdown" id="productBreakdown" open>
     <summary>各商品總計<span class="count-badge" id="productBreakdownCount">0</span></summary>
     <div class="pb-table" id="productBreakdownTable"><p class="empty-state">還沒有資料。</p></div>
@@ -118,14 +149,17 @@
             <div class="field"><label>客人名稱</label><input type="text" id="customerName" placeholder="例如：阿美"></div>
             <div class="field"><label>日期</label><input type="date" id="soldAt"></div>
           </div>
-          <div class="field">
-            <label>訂單狀態</label>
-            <select id="orderStatus">
-              <option value="待付款">待付款</option>
-              <option value="已付款">已付款</option>
-              <option value="已出貨">已出貨</option>
-              <option value="已完成">已完成</option>
-            </select>
+          <div class="two-col">
+            <div class="field">
+              <label>訂單狀態</label>
+              <select id="orderStatus">
+                <option value="待付款">待付款</option>
+                <option value="已付款">已付款</option>
+                <option value="已出貨">已出貨</option>
+                <option value="已完成">已完成</option>
+              </select>
+            </div>
+            <div class="field"><label>出貨期限<span class="hint">選填</span></label><input type="date" id="shipBy"></div>
           </div>
           <div class="field">
             <label>快速選商品<span class="hint">選了會自動帶入下面的商品名稱／成本／售價／運費，選完還是可以改</span></label>
@@ -260,6 +294,29 @@
     $('statAvgMargin').textContent = Math.round(avgMargin) + '%';
 
     renderProductBreakdown();
+    renderStatusOverview();
+  }
+
+  function renderStatusOverview() {
+    var today = new Date().toISOString().slice(0, 10);
+    var counts = { '待付款': 0, '已付款': 0, '已出貨': 0, '已完成': 0 };
+    var unpaidAmount = 0;
+    var overdueCount = 0;
+
+    allRecords.forEach(function (r) {
+      var status = ORDER_STATUSES.indexOf(r.order_status) !== -1 ? r.order_status : ORDER_STATUSES[0];
+      counts[status] += 1;
+      if (status === '待付款') unpaidAmount += (Number(r.sold_price) || 0) + (Number(r.shipping_fee) || 0);
+      if (r.ship_by && r.ship_by < today && (status === '待付款' || status === '已付款')) overdueCount += 1;
+    });
+
+    var grid = $('statusOverviewGrid');
+    grid.innerHTML =
+      '<div class="so-tile s-待付款"><div class="so-label">待付款</div><div class="so-value">' + counts['待付款'] + ' 筆</div><div class="so-sub">NT$' + fmt(unpaidAmount) + '</div></div>' +
+      '<div class="so-tile s-已付款"><div class="so-label">已付款</div><div class="so-value">' + counts['已付款'] + ' 筆</div></div>' +
+      '<div class="so-tile s-已出貨"><div class="so-label">已出貨</div><div class="so-value">' + counts['已出貨'] + ' 筆</div></div>' +
+      '<div class="so-tile s-已完成"><div class="so-label">已完成</div><div class="so-value">' + counts['已完成'] + ' 筆</div></div>' +
+      (overdueCount > 0 ? '<div class="so-tile s-overdue"><div class="so-label">逾期未出貨</div><div class="so-value">' + overdueCount + ' 筆</div></div>' : '');
   }
 
   function renderProductBreakdown() {
@@ -322,12 +379,19 @@
         return '<option value="' + s + '"' + (s === status ? ' selected' : '') + '>' + s + '</option>';
       }).join('');
 
+      var today = new Date().toISOString().slice(0, 10);
+      var isOverdue = r.ship_by && r.ship_by < today && (status === '待付款' || status === '已付款');
+      var shipByHtml = ' · <span class="ship-by-note' + (isOverdue ? ' overdue' : '') + '">' +
+        (isOverdue ? '⚠ 逾期未出貨 · ' : '') + '出貨期限：' +
+        '<input type="date" class="ship-by-input" data-action="ship-by" value="' + (r.ship_by || '') + '" style="border:none;background:none;font:inherit;color:inherit;"></span>';
+
       card.innerHTML =
         thumbHtml +
         '<div class="record-main">' +
           '<div class="rm-top"><span class="rm-title">' + escapeHtml(r.item_name || '未命名商品') + '</span><span class="rm-date">' + escapeHtml(r.sold_at) + '</span></div>' +
           '<div class="rm-sub">' + (r.customer_name ? '客人：' + escapeHtml(r.customer_name) : '未填客人名稱') +
             ' · <select class="status-select s-' + status + '" data-action="status">' + statusOptions + '</select>' +
+            shipByHtml +
           '</div>' +
           '<div class="rm-nums">' +
             '<span>成本 NT$' + fmt(r.cost) + '</span>' +
@@ -354,7 +418,6 @@
       var statusSelect = card.querySelector('[data-action="status"]');
       statusSelect.addEventListener('change', async function () {
         var newStatus = this.value;
-        var prevClass = statusSelect.className;
         try {
           var res = await fetch('/api/sales-records/' + r.id, {
             method: 'PATCH',
@@ -363,11 +426,31 @@
           });
           if (!res.ok) throw new Error();
           r.order_status = newStatus;
-          statusSelect.className = 'status-select s-' + newStatus;
+          renderList($('searchRecords').value);
+          updateStats();
           showToast('狀態已更新');
         } catch (e) {
-          statusSelect.className = prevClass;
           statusSelect.value = status;
+          showToast('更新失敗，請再試一次');
+        }
+      });
+
+      var shipByInput = card.querySelector('[data-action="ship-by"]');
+      shipByInput.addEventListener('change', async function () {
+        var newShipBy = this.value;
+        try {
+          var res = await fetch('/api/sales-records/' + r.id, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ shipBy: newShipBy })
+          });
+          if (!res.ok) throw new Error();
+          r.ship_by = newShipBy || null;
+          renderList($('searchRecords').value);
+          updateStats();
+          showToast('出貨期限已更新');
+        } catch (e) {
+          shipByInput.value = r.ship_by || '';
           showToast('更新失敗，請再試一次');
         }
       });
@@ -396,6 +479,7 @@
     fd.append('soldAt', $('soldAt').value || new Date().toISOString().slice(0, 10));
     fd.append('note', $('note').value.trim());
     fd.append('orderStatus', $('orderStatus').value);
+    fd.append('shipBy', $('shipBy').value || '');
     if ($('photoInput').files[0]) fd.append('photo', $('photoInput').files[0]);
 
     var btn = $('submitBtn');

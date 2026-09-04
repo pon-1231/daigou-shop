@@ -63,6 +63,7 @@ router.post('/', (req, res) => {
         profit: soldPrice - cost,
         note: String(body.note || '').slice(0, 1000),
         order_status: orderStatus,
+        ship_by: body.shipBy || null,
         sold_at: body.soldAt || new Date().toISOString().slice(0, 10)
       };
 
@@ -77,13 +78,25 @@ router.post('/', (req, res) => {
 
 router.patch('/:id', async (req, res) => {
   if (!supabase) return res.status(500).json({ error: 'Supabase 尚未設定' });
-  const { orderStatus } = req.body || {};
-  if (!ORDER_STATUSES.includes(orderStatus)) {
-    return res.status(400).json({ error: '訂單狀態不合法' });
+  const { orderStatus, shipBy } = req.body || {};
+  const update = {};
+
+  if (orderStatus !== undefined) {
+    if (!ORDER_STATUSES.includes(orderStatus)) {
+      return res.status(400).json({ error: '訂單狀態不合法' });
+    }
+    update.order_status = orderStatus;
   }
+  if (shipBy !== undefined) {
+    update.ship_by = shipBy || null;
+  }
+  if (Object.keys(update).length === 0) {
+    return res.status(400).json({ error: '沒有要更新的欄位' });
+  }
+
   const { data, error } = await supabase
     .from('sales_records')
-    .update({ order_status: orderStatus })
+    .update(update)
     .eq('id', req.params.id)
     .select()
     .single();
