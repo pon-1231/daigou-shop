@@ -141,9 +141,26 @@
   .period-row select { font-size: 13.5px; padding: 7px 12px; border-radius: var(--radius-sm); border: 1px solid var(--line-strong); background: var(--bg-elevated); }
 
   /* ---------- Order list ---------- */
-  .order-list { display: flex; flex-direction: column; gap: 12px; }
-  .order-card { padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--bg-elevated); box-shadow: var(--shadow); }
+  .order-list {
+    display: flex; flex-direction: column; gap: 12px;
+    max-height: 78vh; overflow-y: auto; padding: 2px 6px 2px 2px;
+  }
+  .order-card { padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--bg-elevated); box-shadow: var(--shadow); display: flex; gap: 10px; }
+  .order-card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
+  .oc-check { flex-shrink: 0; margin-top: 3px; width: 16px; height: 16px; cursor: pointer; }
+  .oc-body { flex: 1; min-width: 0; }
   .oc-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+
+  .bulk-bar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px;
+    background: var(--accent-soft); color: var(--accent); border-radius: var(--radius-sm);
+    padding: 10px 14px; margin: -8px 0 12px;
+  }
+  .bulk-bar select { font-size: 13px; padding: 5px 10px; border-radius: var(--radius-sm); border: 1px solid var(--accent); }
+  .bulk-bar button#bulkClear {
+    font-family: var(--font-mono); font-size: 11.5px; color: var(--accent); background: none; border: none;
+    cursor: pointer; text-decoration: underline; margin-left: auto;
+  }
   .oc-customer { font-weight: 700; font-size: 15px; }
   .oc-date { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-soft); }
   .oc-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
@@ -246,10 +263,9 @@
             </div>
             <div class="field"><label>出貨期限<span class="hint">選填</span></label><input type="date" id="shipBy"></div>
           </div>
-          <div class="field"><label>給客人的運費 NT$<span class="hint">整張訂單共用一個</span></label><input type="number" id="shippingFee" min="0" step="1" placeholder="0"></div>
-
           <div class="field">
             <label>選商品<span class="hint">點圖片加進這張訂單，可以加好幾樣</span></label>
+            <input type="text" id="productSearch" placeholder="搜尋商品名稱…" style="margin-bottom:8px;">
             <div class="product-gallery" id="productGallery"><p class="empty-state">還沒有已儲存的商品，可以用下面「手動新增」。</p></div>
             <div class="size-picker" id="sizePicker" style="display:none;">
               <div class="sp-title">「<span id="spItemName"></span>」選尺寸</div>
@@ -306,6 +322,17 @@
         <span class="fn-label"></span>
         <button type="button" id="clearFilter">✕ 清除篩選</button>
       </p>
+      <p class="bulk-bar" id="bulkBar" style="display:none;">
+        <span id="bulkCount">0 筆已選取</span>
+        <select id="bulkStatus">
+          <option value="待處理">待處理</option>
+          <option value="已下貨">已下貨</option>
+          <option value="已出貨">已出貨</option>
+          <option value="已完成">已完成</option>
+        </select>
+        <button type="button" class="btn small primary" id="bulkApply">批次移動</button>
+        <button type="button" id="bulkClear">✕ 取消選取</button>
+      </p>
       <div class="order-list" id="orderList"><p class="empty-state">載入中…</p></div>
     </section>
   </div>
@@ -319,7 +346,7 @@
   var allOrders = [];
   var allProducts = [];
   var cart = [];
-  var pendingProduct = null;
+  var selectedOrderIds = new Set();
   var ORDER_STATUSES = ['待處理', '已下貨', '已出貨', '已完成'];
   var activeStatusFilter = null; // status string | '__overdue__' | null
   var editingId = null;
@@ -354,46 +381,90 @@
     return (sizesStr || '').split(/[,，、]/).map(function (s) { return s.trim(); }).filter(Boolean);
   }
 
+  /* 同一個商品名稱可能存了好幾筆(不同尺寸價錢不一樣時，一個尺寸一筆)，
+     圖庫依商品名稱分組成一張卡片；每筆各自的「可選尺寸」也攤平成選項，
+     選哪個尺寸就是用那一筆自己的成本/售價。 */
+  function groupProducts(products) {
+    var byName = {};
+    var order = [];
+    products.forEach(function (p) {
+      var key = p.name || '未命名商品';
+      if (!byName[key]) { byName[key] = []; order.push(key); }
+      byName[key].push(p);
+    });
+    return order.map(function (name) { return { name: name, variants: byName[name] }; });
+  }
+
+  function groupOptions(group) {
+    var options = [];
+    group.variants.forEach(function (p) {
+      var sizes = parseSizes(p.sizes);
+      if (sizes.length === 0) {
+        options.push({ product: p, size: '' });
+      } else {
+        sizes.forEach(function (s) { options.push({ product: p, size: s }); });
+      }
+    });
+    return options;
+  }
+
   function renderGallery() {
     var el = $('productGallery');
+    var term = ($('productSearch').value || '').trim().toLowerCase();
+    var filtered = term
+      ? allProducts.filter(function (p) { return (p.name || '').toLowerCase().indexOf(term) !== -1; })
+      : allProducts;
+
     if (allProducts.length === 0) {
       el.innerHTML = '<p class="empty-state">還沒有已儲存的商品，可以用下面「手動新增」。</p>';
       return;
     }
+    if (filtered.length === 0) {
+      el.innerHTML = '<p class="empty-state">找不到符合的商品。</p>';
+      return;
+    }
+
     el.innerHTML = '';
-    allProducts.forEach(function (p) {
-      var countInCart = cart.filter(function (c) { return c.productId === p.id; }).length;
+    groupProducts(filtered).forEach(function (group) {
+      var options = groupOptions(group);
+      var thumbUrl = (group.variants.filter(function (v) { return v.photo_url; })[0] || {}).photo_url;
+      var prices = options.map(function (o) { return Number(o.product.final_price) || 0; });
+      var priceLabel = Math.min.apply(null, prices) !== Math.max.apply(null, prices)
+        ? 'NT$' + fmt(Math.min.apply(null, prices)) + '~' + fmt(Math.max.apply(null, prices))
+        : 'NT$' + fmt(prices[0]);
+      var variantIds = group.variants.map(function (v) { return v.id; });
+      var countInCart = cart.filter(function (c) { return variantIds.indexOf(c.productId) !== -1; }).length;
 
       var card = document.createElement('div');
       card.className = 'gallery-card';
       card.innerHTML =
-        (p.photo_url ? '<img src="' + escapeHtml(p.photo_url) + '" alt="">' : '<div class="gc-placeholder">🖼️</div>') +
-        '<div class="gc-name">' + escapeHtml(p.name || '未命名商品') + '</div>' +
-        '<div class="gc-price">NT$' + fmt(p.final_price) + '</div>' +
+        (thumbUrl ? '<img src="' + escapeHtml(thumbUrl) + '" alt="">' : '<div class="gc-placeholder">🖼️</div>') +
+        '<div class="gc-name">' + escapeHtml(group.name) + '</div>' +
+        '<div class="gc-price">' + priceLabel + '</div>' +
         (countInCart > 0 ? '<div class="gc-count">' + countInCart + '</div>' : '');
       card.addEventListener('click', function () {
-        var sizes = parseSizes(p.sizes);
-        if (sizes.length === 0) {
-          addProductToCart(p, '');
+        if (options.length === 1 && !options[0].size) {
+          addProductToCart(options[0].product, '');
         } else {
-          openSizePicker(p, sizes);
+          openSizePicker(group.name, options);
         }
       });
       el.appendChild(card);
     });
   }
 
-  function openSizePicker(product, sizes) {
-    pendingProduct = product;
-    $('spItemName').textContent = product.name || '未命名商品';
+  $('productSearch').addEventListener('input', renderGallery);
+
+  function openSizePicker(name, options) {
+    $('spItemName').textContent = name;
     var el = $('spVariants');
     el.innerHTML = '';
-    sizes.forEach(function (s) {
+    options.forEach(function (opt) {
       var btn = document.createElement('button');
       btn.type = 'button';
-      btn.textContent = s;
+      btn.textContent = (opt.size || '(無標示尺寸)') + ' · NT$' + fmt(opt.product.final_price);
       btn.addEventListener('click', function () {
-        addProductToCart(product, s);
+        addProductToCart(opt.product, opt.size);
         closeSizePicker();
       });
       el.appendChild(btn);
@@ -403,7 +474,6 @@
   }
 
   function closeSizePicker() {
-    pendingProduct = null;
     $('sizePicker').style.display = 'none';
   }
 
@@ -674,24 +744,35 @@
       var cls = 'good';
       if (profit < 0) cls = 'bad'; else if (totalSold > 0 && (profit / totalSold * 100) < 25) cls = 'warn';
 
+      if (selectedOrderIds.has(o.id)) card.classList.add('selected');
+
       card.innerHTML =
-        '<div class="oc-top"><span class="oc-customer">' + escapeHtml(o.customer_name || '未填客人名稱') + '</span><span class="oc-date">' + escapeHtml(o.sold_at) + '</span></div>' +
-        '<div class="oc-controls">' +
-          '<select class="status-select s-' + status + '" data-action="status">' + statusOptions + '</select>' +
-          '<span class="ship-by-note' + (isOverdue ? ' overdue' : '') + '">' + (isOverdue ? '⚠ 逾期未出貨 · ' : '') + '出貨期限：<input type="date" data-action="ship-by" value="' + (o.ship_by || '') + '"></span>' +
-          (o.photo_url ? '<a class="oc-photo-link" href="' + escapeHtml(o.photo_url) + '" target="_blank" rel="noopener">📎 訂單照片</a>' : '') +
-        '</div>' +
-        '<div class="oc-items">' + itemsHtml + '</div>' +
-        '<div class="oc-totals">' +
-          '<span>成本 NT$' + fmt(totalCost) + '</span>' +
-          '<span>售價 NT$' + fmt(totalSold) + '</span>' +
-          (o.shipping_fee ? '<span>運費 NT$' + fmt(o.shipping_fee) + '</span>' : '') +
-          '<span class="chip ' + cls + '">淨利 NT$' + fmt(profit) + '</span>' +
-        '</div>' +
-        (o.note ? '<div class="oc-note">' + escapeHtml(o.note) + '</div>' : '') +
-        '<div class="oc-actions"><button type="button" class="btn small" data-action="edit">編輯</button><button type="button" class="btn small ghost" data-action="delete">刪除</button></div>';
+        '<input type="checkbox" class="oc-check" data-action="select"' + (selectedOrderIds.has(o.id) ? ' checked' : '') + '>' +
+        '<div class="oc-body">' +
+          '<div class="oc-top"><span class="oc-customer">' + escapeHtml(o.customer_name || '未填客人名稱') + '</span><span class="oc-date">' + escapeHtml(o.sold_at) + '</span></div>' +
+          '<div class="oc-controls">' +
+            '<select class="status-select s-' + status + '" data-action="status">' + statusOptions + '</select>' +
+            '<span class="ship-by-note' + (isOverdue ? ' overdue' : '') + '">' + (isOverdue ? '⚠ 逾期未出貨 · ' : '') + '出貨期限：<input type="date" data-action="ship-by" value="' + (o.ship_by || '') + '"></span>' +
+            (o.photo_url ? '<a class="oc-photo-link" href="' + escapeHtml(o.photo_url) + '" target="_blank" rel="noopener">📎 訂單照片</a>' : '') +
+          '</div>' +
+          '<div class="oc-items">' + itemsHtml + '</div>' +
+          '<div class="oc-totals">' +
+            '<span>成本 NT$' + fmt(totalCost) + '</span>' +
+            '<span>售價 NT$' + fmt(totalSold) + '</span>' +
+            (o.shipping_fee ? '<span>運費 NT$' + fmt(o.shipping_fee) + '</span>' : '') +
+            '<span class="chip ' + cls + '">淨利 NT$' + fmt(profit) + '</span>' +
+          '</div>' +
+          (o.note ? '<div class="oc-note">' + escapeHtml(o.note) + '</div>' : '') +
+          '<div class="oc-actions"><button type="button" class="btn small" data-action="edit">編輯</button><button type="button" class="btn small ghost" data-action="delete">刪除</button></div>' +
+        '</div>';
 
       listEl.appendChild(card);
+
+      card.querySelector('[data-action="select"]').addEventListener('change', function () {
+        if (this.checked) selectedOrderIds.add(o.id); else selectedOrderIds.delete(o.id);
+        card.classList.toggle('selected', this.checked);
+        updateBulkBar();
+      });
 
       card.querySelector('[data-action="edit"]').addEventListener('click', function () { editOrder(o); });
       card.querySelector('[data-action="delete"]').addEventListener('click', async function () {
@@ -699,8 +780,10 @@
           var res = await fetch('/api/orders/' + o.id, { method: 'DELETE' });
           if (!res.ok) throw new Error();
           allOrders = allOrders.filter(function (x) { return x.id !== o.id; });
+          selectedOrderIds.delete(o.id);
           if (editingId === o.id) exitEditMode();
           renderAll();
+          updateBulkBar();
           showToast('已刪除');
         } catch (e) { showToast('刪除失敗，請再試一次'); }
       });
@@ -753,6 +836,54 @@
     renderOrderList(base);
   }
 
+  /* ---------- Bulk status move ---------- */
+
+  function updateBulkBar() {
+    var bar = $('bulkBar');
+    if (selectedOrderIds.size === 0) {
+      bar.style.display = 'none';
+    } else {
+      bar.style.display = '';
+      $('bulkCount').textContent = selectedOrderIds.size + ' 筆已選取';
+    }
+  }
+
+  $('bulkClear').addEventListener('click', function () {
+    selectedOrderIds.clear();
+    renderAll();
+    updateBulkBar();
+  });
+
+  $('bulkApply').addEventListener('click', async function () {
+    var newStatus = $('bulkStatus').value;
+    var ids = Array.from(selectedOrderIds);
+    if (ids.length === 0) return;
+    var btn = this;
+    btn.disabled = true;
+    try {
+      var results = await Promise.all(ids.map(function (id) {
+        return fetch('/api/orders/' + id, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderStatus: newStatus })
+        });
+      }));
+      var failed = results.filter(function (r) { return !r.ok; }).length;
+      ids.forEach(function (id) {
+        var order = allOrders.find(function (o) { return o.id === id; });
+        if (order) order.order_status = newStatus;
+      });
+      selectedOrderIds.clear();
+      renderAll();
+      updateBulkBar();
+      showToast(failed > 0 ? (failed + ' 筆更新失敗') : '已批次更新狀態');
+    } catch (e) {
+      showToast('批次更新失敗，請再試一次');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
   /* ---------- Create / edit order ---------- */
 
   function editOrder(o) {
@@ -761,7 +892,6 @@
     $('soldAt').value = o.sold_at || new Date().toISOString().slice(0, 10);
     $('orderStatus').value = ORDER_STATUSES.indexOf(o.order_status) !== -1 ? o.order_status : ORDER_STATUSES[0];
     $('shipBy').value = o.ship_by || '';
-    $('shippingFee').value = o.shipping_fee || '';
     $('note').value = o.note || '';
 
     cart = (o.order_items || []).map(function (it) {
@@ -819,7 +949,6 @@
     fd.append('customerName', $('customerName').value.trim());
     fd.append('orderStatus', $('orderStatus').value);
     fd.append('shipBy', $('shipBy').value || '');
-    fd.append('shippingFee', $('shippingFee').value || '0');
     fd.append('note', $('note').value.trim());
     fd.append('soldAt', $('soldAt').value || new Date().toISOString().slice(0, 10));
     fd.append('items', JSON.stringify(cart.map(function (it) {
