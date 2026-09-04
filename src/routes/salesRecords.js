@@ -78,18 +78,41 @@ router.post('/', (req, res) => {
 
 router.patch('/:id', async (req, res) => {
   if (!supabase) return res.status(500).json({ error: 'Supabase 尚未設定' });
-  const { orderStatus, shipBy } = req.body || {};
+  const body = req.body || {};
   const update = {};
 
-  if (orderStatus !== undefined) {
-    if (!ORDER_STATUSES.includes(orderStatus)) {
+  if (body.orderStatus !== undefined) {
+    if (!ORDER_STATUSES.includes(body.orderStatus)) {
       return res.status(400).json({ error: '訂單狀態不合法' });
     }
-    update.order_status = orderStatus;
+    update.order_status = body.orderStatus;
   }
-  if (shipBy !== undefined) {
-    update.ship_by = shipBy || null;
+  if (body.shipBy !== undefined) update.ship_by = body.shipBy || null;
+  if (body.customerName !== undefined) update.customer_name = String(body.customerName).slice(0, 200);
+  if (body.itemName !== undefined) update.item_name = String(body.itemName).slice(0, 200);
+  if (body.note !== undefined) update.note = String(body.note).slice(0, 1000);
+  if (body.soldAt !== undefined && body.soldAt) update.sold_at = body.soldAt;
+
+  var costGiven = body.cost !== undefined;
+  var soldPriceGiven = body.soldPrice !== undefined;
+  if (costGiven) update.cost = Number(body.cost) || 0;
+  if (soldPriceGiven) update.sold_price = Number(body.soldPrice) || 0;
+  if (body.shippingFee !== undefined) update.shipping_fee = Number(body.shippingFee) || 0;
+
+  if (costGiven || soldPriceGiven) {
+    if (!costGiven || !soldPriceGiven) {
+      const { data: existing, error: fetchErr } = await supabase
+        .from('sales_records')
+        .select('cost, sold_price')
+        .eq('id', req.params.id)
+        .single();
+      if (fetchErr) return res.status(500).json({ error: fetchErr.message });
+      if (!costGiven) update.cost = existing.cost;
+      if (!soldPriceGiven) update.sold_price = existing.sold_price;
+    }
+    update.profit = update.sold_price - update.cost;
   }
+
   if (Object.keys(update).length === 0) {
     return res.status(400).json({ error: '沒有要更新的欄位' });
   }

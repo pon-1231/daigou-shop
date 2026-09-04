@@ -12,10 +12,8 @@ router.get('/', async (req, res) => {
   res.json(data);
 });
 
-router.post('/', async (req, res) => {
-  if (!supabase) return res.status(500).json({ error: 'Supabase 尚未設定' });
-  const body = req.body || {};
-  const row = {
+function buildRow(body) {
+  return {
     name: String(body.name || '').slice(0, 200),
     category_key: String(body.categoryKey || ''),
     category_label: String(body.categoryLabel || '未分類'),
@@ -34,9 +32,27 @@ router.post('/', async (req, res) => {
     profit: Number(body.profit) || 0,
     margin: Number(body.margin) || 0
   };
+}
+
+router.post('/', async (req, res) => {
+  if (!supabase) return res.status(500).json({ error: 'Supabase 尚未設定' });
+  const row = buildRow(req.body || {});
   const { data, error } = await supabase.from('priced_items').insert(row).select().single();
   if (error) return res.status(500).json({ error: error.message });
   res.status(201).json(data);
+});
+
+router.put('/:id', async (req, res) => {
+  if (!supabase) return res.status(500).json({ error: 'Supabase 尚未設定' });
+  const row = buildRow(req.body || {});
+  const { data, error } = await supabase
+    .from('priced_items')
+    .update(row)
+    .eq('id', req.params.id)
+    .select()
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
 });
 
 router.delete('/:id', async (req, res) => {

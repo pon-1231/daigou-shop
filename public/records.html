@@ -115,6 +115,17 @@
 
   .ship-by-note { font-size: 11.5px; color: var(--ink-soft); font-family: var(--font-mono); }
   .ship-by-note.overdue { color: var(--bad); font-weight: 700; }
+
+  .edit-banner {
+    display: flex; align-items: center; gap: 10px; font-size: 13px;
+    background: var(--accent-soft); color: var(--accent); border-radius: var(--radius-sm);
+    padding: 10px 14px; margin-bottom: 20px;
+  }
+  .edit-banner #editBannerName { font-weight: 700; }
+  .edit-banner button {
+    margin-left: auto; font-family: var(--font-mono); font-size: 11.5px; color: var(--accent);
+    background: none; border: none; cursor: pointer; text-decoration: underline;
+  }
 </style>
 </head>
 <body>
@@ -156,7 +167,11 @@
   <div class="layout">
     <section class="panel form-panel">
       <div class="panel-pad">
-        <h2>新增一筆紀錄</h2>
+        <h2 id="formTitle">新增一筆紀錄</h2>
+        <p class="edit-banner" id="editBanner" style="display:none;">
+          正在編輯：<span id="editBannerName"></span>
+          <button type="button" id="cancelEdit">✕ 取消編輯</button>
+        </p>
         <form id="recordForm">
           <div class="two-col">
             <div class="field"><label>客人名稱</label><input type="text" id="customerName" placeholder="例如：阿美"></div>
@@ -231,6 +246,7 @@
   var allProducts = [];
   var ORDER_STATUSES = ['待付款', '已付款', '已出貨', '已完成'];
   var activeStatusFilter = null; // '待付款' | '已付款' | '已出貨' | '已完成' | '__overdue__' | null
+  var editingId = null;
 
   $('soldAt').value = new Date().toISOString().slice(0, 10);
 
@@ -458,14 +474,16 @@
           '</div>' +
           (r.note ? '<div class="rm-note">' + escapeHtml(r.note) + '</div>' : '') +
         '</div>' +
-        '<div class="record-actions"><button type="button" class="btn small ghost" data-action="delete">刪除</button></div>';
+        '<div class="record-actions"><button type="button" class="btn small" data-action="edit">編輯</button><button type="button" class="btn small ghost" data-action="delete">刪除</button></div>';
 
       listEl.appendChild(card);
+      card.querySelector('[data-action="edit"]').addEventListener('click', function () { editRecord(r); });
       card.querySelector('[data-action="delete"]').addEventListener('click', async function () {
         try {
           var res = await fetch('/api/sales-records/' + r.id, { method: 'DELETE' });
           if (!res.ok) throw new Error();
           allRecords = allRecords.filter(function (x) { return x.id !== r.id; });
+          if (editingId === r.id) exitEditRecordMode();
           renderList($('searchRecords').value);
           updateStats();
           showToast('已刪除');
@@ -514,6 +532,42 @@
     });
   }
 
+  function editRecord(r) {
+    editingId = r.id;
+    $('customerName').value = r.customer_name || '';
+    $('soldAt').value = r.sold_at || new Date().toISOString().slice(0, 10);
+    $('orderStatus').value = ORDER_STATUSES.indexOf(r.order_status) !== -1 ? r.order_status : ORDER_STATUSES[0];
+    $('shipBy').value = r.ship_by || '';
+    $('productSelect').value = '';
+    $('itemName').value = r.item_name || '';
+    $('cost').value = r.cost;
+    $('soldPrice').value = r.sold_price;
+    $('shippingFee').value = r.shipping_fee;
+    $('note').value = r.note || '';
+    updateLiveProfit();
+
+    $('formTitle').textContent = '編輯這筆紀錄';
+    $('editBannerName').textContent = r.item_name || '未命名商品';
+    $('editBanner').style.display = '';
+    $('submitBtn').textContent = '💾 儲存修改';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function exitEditRecordMode() {
+    editingId = null;
+    $('formTitle').textContent = '新增一筆紀錄';
+    $('editBanner').style.display = 'none';
+    $('submitBtn').textContent = '✚ 新增紀錄';
+  }
+
+  $('cancelEdit').addEventListener('click', function () {
+    exitEditRecordMode();
+    $('recordForm').reset();
+    $('soldAt').value = new Date().toISOString().slice(0, 10);
+    $('photoPreview').style.display = 'none';
+    updateLiveProfit();
+  });
+
   $('searchRecords').addEventListener('input', function () { renderList(this.value); });
 
   $('recordForm').addEventListener('submit', async function (e) {
@@ -527,38 +581,67 @@
       return;
     }
 
-    var fd = new FormData();
-    fd.append('customerName', $('customerName').value.trim());
-    fd.append('itemName', $('itemName').value.trim());
-    fd.append('cost', $('cost').value || '0');
-    fd.append('soldPrice', $('soldPrice').value || '0');
-    fd.append('shippingFee', $('shippingFee').value || '0');
-    fd.append('soldAt', $('soldAt').value || new Date().toISOString().slice(0, 10));
-    fd.append('note', $('note').value.trim());
-    fd.append('orderStatus', $('orderStatus').value);
-    fd.append('shipBy', $('shipBy').value || '');
-    if ($('photoInput').files[0]) fd.append('photo', $('photoInput').files[0]);
-
     var btn = $('submitBtn');
+    var isEditing = !!editingId;
     btn.disabled = true;
+
     try {
-      var res = await fetch('/api/sales-records', { method: 'POST', body: fd });
+      var res, saved;
+      if (isEditing) {
+        res = await fetch('/api/sales-records/' + editingId, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customerName: $('customerName').value.trim(),
+            itemName: $('itemName').value.trim(),
+            cost: $('cost').value || '0',
+            soldPrice: $('soldPrice').value || '0',
+            shippingFee: $('shippingFee').value || '0',
+            soldAt: $('soldAt').value || new Date().toISOString().slice(0, 10),
+            note: $('note').value.trim(),
+            orderStatus: $('orderStatus').value,
+            shipBy: $('shipBy').value || ''
+          })
+        });
+      } else {
+        var fd = new FormData();
+        fd.append('customerName', $('customerName').value.trim());
+        fd.append('itemName', $('itemName').value.trim());
+        fd.append('cost', $('cost').value || '0');
+        fd.append('soldPrice', $('soldPrice').value || '0');
+        fd.append('shippingFee', $('shippingFee').value || '0');
+        fd.append('soldAt', $('soldAt').value || new Date().toISOString().slice(0, 10));
+        fd.append('note', $('note').value.trim());
+        fd.append('orderStatus', $('orderStatus').value);
+        fd.append('shipBy', $('shipBy').value || '');
+        if ($('photoInput').files[0]) fd.append('photo', $('photoInput').files[0]);
+        res = await fetch('/api/sales-records', { method: 'POST', body: fd });
+      }
+
       if (!res.ok) {
         var errBody = await res.json().catch(function () { return {}; });
-        throw new Error(errBody.error || '新增失敗');
+        throw new Error(errBody.error || (isEditing ? '更新失敗' : '新增失敗'));
       }
-      var saved = await res.json();
-      allRecords.unshift(saved);
+      saved = await res.json();
+
+      if (isEditing) {
+        var idx = allRecords.findIndex(function (x) { return x.id === saved.id; });
+        if (idx !== -1) allRecords[idx] = saved;
+        exitEditRecordMode();
+        showToast('已更新');
+      } else {
+        allRecords.unshift(saved);
+        showToast('已新增紀錄');
+      }
       renderList($('searchRecords').value);
       updateStats();
-      showToast('已新增紀錄');
 
       this.reset();
       $('soldAt').value = new Date().toISOString().slice(0, 10);
       $('photoPreview').style.display = 'none';
       updateLiveProfit();
     } catch (err) {
-      errEl.textContent = err.message || '新增失敗，請再試一次。';
+      errEl.textContent = err.message || (isEditing ? '更新失敗，請再試一次。' : '新增失敗，請再試一次。');
       errEl.classList.add('show');
     } finally {
       btn.disabled = false;

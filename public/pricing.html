@@ -113,6 +113,17 @@
   .si-sub { font-size: 12px; color: var(--ink-soft); margin-top: 4px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
   .si-actions { display: flex; gap: 6px; flex-shrink: 0; }
 
+  .edit-banner {
+    display: flex; align-items: center; gap: 10px; font-size: 13px;
+    background: var(--accent-soft); color: var(--accent); border-radius: var(--radius-sm);
+    padding: 10px 14px; margin-bottom: 20px;
+  }
+  .edit-banner #editBannerName { font-weight: 700; }
+  .edit-banner button {
+    margin-left: auto; font-family: var(--font-mono); font-size: 11.5px; color: var(--accent);
+    background: none; border: none; cursor: pointer; text-decoration: underline;
+  }
+
   footer.page-foot { margin-top: 30px; font-size: 12px; color: var(--ink-soft); text-align: center; }
 </style>
 </head>
@@ -146,6 +157,11 @@
     <section class="panel">
       <div class="panel-pad">
         <h2>成本資料</h2>
+
+        <p class="edit-banner" id="editBanner" style="display:none;">
+          正在編輯：<span id="editBannerName"></span>
+          <button type="button" id="cancelEdit">✕ 取消編輯</button>
+        </p>
 
         <div class="product-name-row">
           <label>商品名稱<span class="hint">選填，方便之後在清單裡搜尋類似商品</span></label>
@@ -275,6 +291,7 @@
   var currentCategory = null;
   var lastState = { chinaCost: 0, actualCost: 0, finalPrice: 0, profit: 0, margin: 0 };
   var allSavedItems = [];
+  var editingId = null;
 
   var savedFx = null;
   try { savedFx = localStorage.getItem('daigou_fx_rate'); } catch (e) {}
@@ -376,17 +393,20 @@
           '<div class="si-sub">實際成本 NT$' + fmt(it.actual_cost) + ' → 售價 NT$' + fmt(it.final_price) + ' · 淨利率 ' + Math.round(it.margin) + '% · ' + dateStr + '</div>' +
         '</div>' +
         '<div class="si-actions">' +
+          '<button type="button" class="btn small" data-action="edit">編輯</button>' +
           '<button type="button" class="btn small" data-action="apply">套用</button>' +
           '<button type="button" class="btn small ghost" data-action="delete">刪除</button>' +
         '</div>';
       listEl.appendChild(row);
 
+      row.querySelector('[data-action="edit"]').addEventListener('click', function () { editItem(it); });
       row.querySelector('[data-action="apply"]').addEventListener('click', function () { applyItem(it); });
       row.querySelector('[data-action="delete"]').addEventListener('click', async function () {
         try {
           var res = await fetch('/api/priced-items/' + it.id, { method: 'DELETE' });
           if (!res.ok) throw new Error();
           allSavedItems = allSavedItems.filter(function (x) { return x.id !== it.id; });
+          if (editingId === it.id) exitEditMode();
           renderSavedList($('searchSaved').value);
           showToast('已刪除');
         } catch (e) { showToast('刪除失敗，請再試一次'); }
@@ -394,7 +414,7 @@
     });
   }
 
-  function applyItem(it) {
+  function fillFormFromItem(it) {
     $('productName').value = it.name || '';
     $('rmbPrice').value = it.rmb_price;
     $('rmbShip').value = it.rmb_ship;
@@ -409,6 +429,27 @@
     recalc();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
+
+  function applyItem(it) {
+    exitEditMode();
+    fillFormFromItem(it);
+  }
+
+  function editItem(it) {
+    editingId = it.id;
+    fillFormFromItem(it);
+    $('editBannerName').textContent = it.name || '未命名商品';
+    $('editBanner').style.display = '';
+    $('saveItem').textContent = '💾 儲存修改';
+  }
+
+  function exitEditMode() {
+    editingId = null;
+    $('editBanner').style.display = 'none';
+    $('saveItem').textContent = '💾 加入清單';
+  }
+
+  $('cancelEdit').addEventListener('click', exitEditMode);
 
   fields.forEach(function (id) {
     $(id).addEventListener('input', function () {
@@ -435,6 +476,7 @@
   });
 
   $('resetAll').addEventListener('click', function () {
+    exitEditMode();
     fields.forEach(function (id) { $(id).value = ''; });
     $('fxRate').value = 4.5;
     $('productName').value = '';
@@ -460,24 +502,32 @@
       profit: lastState.profit, margin: lastState.margin
     };
     var btn = $('saveItem');
+    var isEditing = !!editingId;
     var original = btn.textContent;
     btn.disabled = true;
     try {
-      var res = await fetch('/api/priced-items', {
-        method: 'POST',
+      var res = await fetch(isEditing ? '/api/priced-items/' + editingId : '/api/priced-items', {
+        method: isEditing ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
       if (!res.ok) throw new Error();
       var saved = await res.json();
-      allSavedItems.unshift(saved);
+      if (isEditing) {
+        var idx = allSavedItems.findIndex(function (x) { return x.id === saved.id; });
+        if (idx !== -1) allSavedItems[idx] = saved;
+        exitEditMode();
+        showToast('已更新');
+      } else {
+        allSavedItems.unshift(saved);
+        showToast('已加入清單');
+      }
       renderSavedList($('searchSaved').value);
-      showToast('已加入清單');
     } catch (e) {
-      showToast('儲存失敗，請檢查網路後再試一次');
+      showToast(isEditing ? '更新失敗，請檢查網路後再試一次' : '儲存失敗，請檢查網路後再試一次');
     } finally {
       btn.disabled = false;
-      btn.textContent = original;
+      if (!isEditing) btn.textContent = original;
     }
   });
 
