@@ -7,15 +7,37 @@ router.get('/excel', async (req, res) => {
   if (!supabase) return res.status(500).json({ error: 'Supabase 尚未設定' });
 
   try {
-    const [pricedResult, salesResult] = await Promise.all([
+    const [pricedResult, ordersResult] = await Promise.all([
       supabase.from('priced_items').select('*').order('created_at', { ascending: false }),
-      supabase.from('sales_records').select('*').order('sold_at', { ascending: false })
+      supabase.from('orders').select('*, order_items(*)').order('sold_at', { ascending: false })
     ]);
     if (pricedResult.error) throw pricedResult.error;
-    if (salesResult.error) throw salesResult.error;
+    if (ordersResult.error) throw ordersResult.error;
 
     const priced = pricedResult.data || [];
-    const sales = salesResult.data || [];
+    const orders = ordersResult.data || [];
+
+    // 攤平成「一列 = 一筆訂單商品」，方便在 Excel 裡篩選/加總
+    const sales = [];
+    orders.forEach((o) => {
+      (o.order_items || []).forEach((item) => {
+        sales.push({
+          sold_at: o.sold_at,
+          customer_name: o.customer_name,
+          item_name: item.item_name,
+          size: item.size || '',
+          order_status: o.order_status,
+          ship_by: o.ship_by,
+          cost: item.cost,
+          sold_price: item.sold_price,
+          shipping_fee: o.shipping_fee,
+          profit: (Number(item.sold_price) || 0) - (Number(item.cost) || 0),
+          note: o.note,
+          photo_url: o.photo_url,
+          created_at: o.created_at
+        });
+      });
+    });
 
     const wb = new ExcelJS.Workbook();
     wb.creator = '代購賣場工具';
@@ -48,6 +70,7 @@ router.get('/excel', async (req, res) => {
       { header: '日期', key: 'sold_at', width: 12 },
       { header: '客人', key: 'customer_name', width: 16 },
       { header: '商品', key: 'item_name', width: 22 },
+      { header: '尺寸', key: 'size', width: 10 },
       { header: '訂單狀態', key: 'order_status', width: 12 },
       { header: '出貨期限', key: 'ship_by', width: 12 },
       { header: '成本', key: 'cost', width: 10 },

@@ -5,7 +5,8 @@ const session = require('express-session');
 
 const { router: authRouter, requireAuth } = require('./src/auth');
 const pricedItemsRouter = require('./src/routes/pricedItems');
-const salesRecordsRouter = require('./src/routes/salesRecords');
+const ordersRouter = require('./src/routes/orders');
+const uploadsRouter = require('./src/routes/uploads');
 const exportRouter = require('./src/routes/exportExcel');
 
 const app = express();
@@ -32,7 +33,8 @@ app.use('/', authRouter);
 app.use(requireAuth);
 
 app.use('/api/priced-items', pricedItemsRouter);
-app.use('/api/sales-records', salesRecordsRouter);
+app.use('/api/orders', ordersRouter);
+app.use('/api/uploads', uploadsRouter);
 app.use('/api/export', exportRouter);
 
 app.use(express.static(path.join(__dirname, 'public')));

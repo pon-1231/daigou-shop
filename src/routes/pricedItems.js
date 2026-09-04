@@ -30,7 +30,8 @@ function buildRow(body) {
     actual_cost: Number(body.actualCost) || 0,
     final_price: Number(body.finalPrice) || 0,
     profit: Number(body.profit) || 0,
-    margin: Number(body.margin) || 0
+    margin: Number(body.margin) || 0,
+    photo_url: body.photoUrl || null
   };
 }
 

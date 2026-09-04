@@ -6,24 +6,20 @@
 <title>銷售紀錄 · NAN｜推し研究所</title>
 <link rel="stylesheet" href="/shared.css">
 <style>
-  .layout { display: grid; grid-template-columns: 380px 1fr; gap: 22px; align-items: start; }
-  @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+  .layout { display: grid; grid-template-columns: 400px 1fr; gap: 22px; align-items: start; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
 
   .form-panel { position: sticky; top: 20px; }
   .field { margin-bottom: 16px; }
   .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
   .photo-drop {
-    border: 1px dashed var(--line-strong);
-    border-radius: var(--radius-sm);
-    padding: 14px;
-    text-align: center;
-    cursor: pointer;
-    background: var(--bg);
+    border: 1px dashed var(--line-strong); border-radius: var(--radius-sm); padding: 14px;
+    text-align: center; cursor: pointer; background: var(--bg);
   }
   .photo-drop input { display: none; }
   .photo-drop .ph-hint { font-size: 12.5px; color: var(--ink-soft); }
-  .photo-preview { margin-top: 10px; max-width: 100%; max-height: 160px; border-radius: var(--radius-sm); display: none; }
+  .photo-preview { margin-top: 10px; max-width: 100%; max-height: 140px; border-radius: var(--radius-sm); display: none; }
 
   .live-profit { display: flex; gap: 8px; margin: 4px 0 18px; flex-wrap: wrap; }
 
@@ -31,90 +27,10 @@
   .list-head h2 { margin: 0; }
   .list-head input[type="text"] { font-size: 13.5px; padding: 7px 14px; border-radius: 999px; width: 200px; }
 
-  .record-list { display: flex; flex-direction: column; gap: 10px; }
-  .record-card {
-    display: flex; gap: 14px; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-sm);
-    background: var(--bg-elevated); box-shadow: var(--shadow); align-items: flex-start; flex-wrap: wrap;
-  }
-  .record-thumb {
-    width: 64px; height: 64px; border-radius: var(--radius-sm); object-fit: cover; flex-shrink: 0;
-    background: var(--bg); border: 1px solid var(--line);
-  }
-  .record-thumb.placeholder { display: flex; align-items: center; justify-content: center; color: var(--ink-soft); font-size: 22px; }
-  .record-main { flex: 1; min-width: 180px; }
-  .record-main .rm-top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; flex-wrap: wrap; }
-  .record-main .rm-title { font-weight: 700; font-size: 14.5px; }
-  .record-main .rm-date { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-soft); }
-  .record-main .rm-sub { font-size: 12.5px; color: var(--ink-soft); margin-top: 3px; }
-  .record-main .rm-nums { display: flex; gap: 10px; margin-top: 8px; flex-wrap: wrap; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12.5px; }
-  .record-main .rm-note { font-size: 12.5px; color: var(--ink-soft); margin-top: 6px; }
-  .record-actions { flex-shrink: 0; }
-
   .field-error { color: var(--bad); font-size: 12.5px; margin-top: 6px; display: none; }
   .field-error.show { display: block; }
 
   .chip.info { background: var(--accent-soft); color: var(--accent); }
-  .status-select {
-    font-family: var(--font-body); font-size: 11.5px; font-weight: 600;
-    padding: 3px 8px; border-radius: 999px; border: none; cursor: pointer;
-  }
-  .status-select.s-待付款 { background: var(--warn-soft); color: var(--warn); }
-  .status-select.s-已付款, .status-select.s-已出貨 { background: var(--accent-soft); color: var(--accent); }
-  .status-select.s-已完成 { background: var(--good-soft); color: var(--good); }
-
-  .product-breakdown { margin-bottom: 22px; }
-  .product-breakdown summary {
-    cursor: pointer; font-weight: 700; font-size: 14px; padding: 4px 0; outline: none;
-    display: flex; align-items: center;
-  }
-  .pb-table { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
-  .pb-row {
-    display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
-    padding: 9px 12px; background: var(--bg-elevated); border: 1px solid var(--line); border-radius: var(--radius-sm);
-    font-size: 13px;
-  }
-  .pb-row .pb-name { font-weight: 600; }
-  .pb-row .pb-sub { font-size: 11.5px; color: var(--ink-soft); font-family: var(--font-mono); }
-  .pb-row .pb-profit { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 700; }
-
-  .status-overview { margin-bottom: 22px; }
-  .status-overview summary {
-    cursor: pointer; font-weight: 700; font-size: 14px; padding: 4px 0; outline: none;
-    display: flex; align-items: center;
-  }
-  .so-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 10px; }
-  .so-tile {
-    padding: 12px 14px; border-radius: var(--radius-sm); border: 1px solid var(--line);
-    background: var(--bg-elevated); text-align: left; cursor: pointer; font-family: var(--font-body);
-    outline-offset: 2px;
-  }
-  @media (hover: hover) { .so-tile:hover { filter: brightness(0.97); } }
-  .so-tile.active { border-color: var(--ink); box-shadow: 0 0 0 2px var(--ink) inset; }
-  .so-tile .so-label { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
-  .so-tile .so-value { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 20px; font-weight: 700; }
-  .so-tile .so-sub { font-size: 11px; color: var(--ink-soft); margin-top: 2px; }
-
-  .filter-note {
-    display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--ink-soft);
-    margin: -8px 0 12px;
-  }
-  .filter-note .fn-label { font-weight: 600; color: var(--ink); }
-  .filter-note button {
-    font-family: var(--font-mono); font-size: 11.5px; color: var(--accent);
-    background: none; border: none; cursor: pointer; padding: 0;
-  }
-  .so-tile.s-待付款 { background: var(--warn-soft); }
-  .so-tile.s-待付款 .so-label, .so-tile.s-待付款 .so-value { color: var(--warn); }
-  .so-tile.s-已付款, .so-tile.s-已出貨 { background: var(--accent-soft); }
-  .so-tile.s-已付款 .so-label, .so-tile.s-已付款 .so-value,
-  .so-tile.s-已出貨 .so-label, .so-tile.s-已出貨 .so-value { color: var(--accent); }
-  .so-tile.s-已完成 { background: var(--good-soft); }
-  .so-tile.s-已完成 .so-label, .so-tile.s-已完成 .so-value { color: var(--good); }
-  .so-tile.s-overdue { background: var(--bad-soft); }
-  .so-tile.s-overdue .so-label, .so-tile.s-overdue .so-value { color: var(--bad); }
-
-  .ship-by-note { font-size: 11.5px; color: var(--ink-soft); font-family: var(--font-mono); }
-  .ship-by-note.overdue { color: var(--bad); font-weight: 700; }
 
   .edit-banner {
     display: flex; align-items: center; gap: 10px; font-size: 13px;
@@ -126,6 +42,144 @@
     margin-left: auto; font-family: var(--font-mono); font-size: 11.5px; color: var(--accent);
     background: none; border: none; cursor: pointer; text-decoration: underline;
   }
+
+  /* ---------- Product gallery / size picker / cart ---------- */
+  .product-gallery {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px;
+    max-height: 320px; overflow-y: auto; padding: 2px;
+  }
+  .gallery-card {
+    border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--bg);
+    cursor: pointer; text-align: center; padding: 6px; position: relative; font-family: var(--font-body);
+  }
+  @media (hover: hover) { .gallery-card:hover { border-color: var(--accent); } }
+  .gallery-card img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; background: var(--bg-elevated); }
+  .gallery-card .gc-placeholder {
+    width: 100%; aspect-ratio: 1; border-radius: 6px; background: var(--bg-elevated);
+    display: flex; align-items: center; justify-content: center; font-size: 22px; color: var(--ink-soft);
+  }
+  .gallery-card .gc-name { font-size: 11px; margin-top: 5px; line-height: 1.3; }
+  .gallery-card .gc-price { font-size: 10.5px; color: var(--ink-soft); font-family: var(--font-mono); }
+  .gallery-card .gc-count {
+    position: absolute; top: -6px; right: -6px; background: var(--accent); color: var(--accent-ink);
+    font-size: 10px; font-weight: 700; border-radius: 999px; min-width: 18px; height: 18px;
+    display: flex; align-items: center; justify-content: center; font-family: var(--font-mono);
+  }
+
+  .size-picker {
+    margin-top: 10px; padding: 12px; border-radius: var(--radius-sm); background: var(--accent-soft);
+  }
+  .size-picker .sp-title { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+  .size-picker .sp-quick { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+  .size-picker .sp-quick button {
+    font-family: var(--font-body); font-size: 12.5px; padding: 6px 12px; border-radius: 999px;
+    border: 1px solid var(--accent); background: var(--bg-elevated); color: var(--accent); cursor: pointer;
+  }
+  .size-picker .sp-custom { display: flex; gap: 6px; }
+  .size-picker .sp-custom input {
+    flex: 1; font-size: 13px; padding: 6px 10px; border-radius: var(--radius-sm); border: 1px solid var(--line-strong);
+  }
+  .size-picker .sp-custom button {
+    font-family: var(--font-body); font-size: 12.5px; padding: 6px 12px; border-radius: var(--radius-sm);
+    border: none; background: var(--accent); color: var(--accent-ink); cursor: pointer;
+  }
+  .size-picker .sp-cancel {
+    display: block; margin-top: 8px; font-family: var(--font-mono); font-size: 11px; color: var(--accent);
+    background: none; border: none; cursor: pointer; text-decoration: underline;
+  }
+
+  .manual-add-row { display: grid; grid-template-columns: 1.6fr 0.8fr 0.8fr 0.8fr auto; gap: 6px; }
+  .manual-add-row input {
+    font-size: 12.5px; padding: 7px 8px; border-radius: var(--radius-sm); border: 1px solid var(--line-strong);
+    width: 100%;
+  }
+  @media (max-width: 480px) { .manual-add-row { grid-template-columns: 1fr 1fr; } }
+
+  .cart-list { display: flex; flex-direction: column; gap: 6px; }
+  .cart-row {
+    display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line);
+    border-radius: var(--radius-sm); background: var(--bg); font-size: 12.5px;
+  }
+  .cart-row img { width: 32px; height: 32px; border-radius: 6px; object-fit: cover; flex-shrink: 0; }
+  .cart-row .cr-name { flex: 1; min-width: 0; }
+  .cart-row .cr-size { font-size: 10.5px; color: var(--ink-soft); }
+  .cart-row .cr-nums { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-soft); white-space: nowrap; }
+  .cart-row .cr-remove { background: none; border: none; color: var(--bad); cursor: pointer; font-size: 14px; padding: 0 2px; }
+
+  /* ---------- Status overview / breakdown ---------- */
+  .status-overview, .product-breakdown { margin-bottom: 22px; }
+  .status-overview summary, .product-breakdown summary {
+    cursor: pointer; font-weight: 700; font-size: 14px; padding: 4px 0; outline: none; display: flex; align-items: center;
+  }
+  .so-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 10px; }
+  .so-tile {
+    padding: 12px 14px; border-radius: var(--radius-sm); border: 1px solid var(--line);
+    background: var(--bg-elevated); text-align: left; cursor: pointer; font-family: var(--font-body); outline-offset: 2px;
+  }
+  @media (hover: hover) { .so-tile:hover { filter: brightness(0.97); } }
+  .so-tile.active { border-color: var(--ink); box-shadow: 0 0 0 2px var(--ink) inset; }
+  .so-tile .so-label { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+  .so-tile .so-value { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 20px; font-weight: 700; }
+  .so-tile .so-sub { font-size: 11px; color: var(--ink-soft); margin-top: 2px; }
+  .so-tile.s-待處理 { background: var(--warn-soft); }
+  .so-tile.s-待處理 .so-label, .so-tile.s-待處理 .so-value { color: var(--warn); }
+  .so-tile.s-已下貨, .so-tile.s-已出貨 { background: var(--accent-soft); }
+  .so-tile.s-已下貨 .so-label, .so-tile.s-已下貨 .so-value,
+  .so-tile.s-已出貨 .so-label, .so-tile.s-已出貨 .so-value { color: var(--accent); }
+  .so-tile.s-已完成 { background: var(--good-soft); }
+  .so-tile.s-已完成 .so-label, .so-tile.s-已完成 .so-value { color: var(--good); }
+  .so-tile.s-overdue { background: var(--bad-soft); }
+  .so-tile.s-overdue .so-label, .so-tile.s-overdue .so-value { color: var(--bad); }
+
+  .filter-note { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--ink-soft); margin: -8px 0 12px; }
+  .filter-note .fn-label { font-weight: 600; color: var(--ink); }
+  .filter-note button { font-family: var(--font-mono); font-size: 11.5px; color: var(--accent); background: none; border: none; cursor: pointer; padding: 0; }
+
+  .pb-table { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+  .pb-row {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+    padding: 9px 12px; background: var(--bg-elevated); border: 1px solid var(--line); border-radius: var(--radius-sm); font-size: 13px;
+  }
+  .pb-row .pb-name { font-weight: 600; }
+  .pb-row .pb-sub { font-size: 11.5px; color: var(--ink-soft); font-family: var(--font-mono); }
+  .pb-row .pb-profit { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 700; }
+
+  .period-row { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+  .period-row label { font-size: 13px; font-weight: 600; margin: 0; }
+  .period-row select { font-size: 13.5px; padding: 7px 12px; border-radius: var(--radius-sm); border: 1px solid var(--line-strong); background: var(--bg-elevated); }
+
+  /* ---------- Order list ---------- */
+  .order-list { display: flex; flex-direction: column; gap: 12px; }
+  .order-card { padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--bg-elevated); box-shadow: var(--shadow); }
+  .oc-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .oc-customer { font-weight: 700; font-size: 15px; }
+  .oc-date { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-soft); }
+  .oc-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+  .status-select {
+    font-family: var(--font-body); font-size: 11.5px; font-weight: 600; padding: 3px 8px; border-radius: 999px; border: none; cursor: pointer;
+  }
+  .status-select.s-待處理 { background: var(--warn-soft); color: var(--warn); }
+  .status-select.s-已下貨, .status-select.s-已出貨 { background: var(--accent-soft); color: var(--accent); }
+  .status-select.s-已完成 { background: var(--good-soft); color: var(--good); }
+  .ship-by-note { font-size: 11.5px; color: var(--ink-soft); font-family: var(--font-mono); }
+  .ship-by-note.overdue { color: var(--bad); font-weight: 700; }
+  .ship-by-note input { border: none; background: none; font: inherit; color: inherit; }
+  .oc-photo-link { font-size: 11.5px; color: var(--accent); text-decoration: none; }
+
+  .oc-items { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+  .oc-item { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+  .oc-item img, .oc-item .oi-placeholder {
+    width: 30px; height: 30px; border-radius: 6px; object-fit: cover; flex-shrink: 0;
+    background: var(--bg); border: 1px solid var(--line);
+  }
+  .oc-item .oi-placeholder { display: flex; align-items: center; justify-content: center; font-size: 14px; color: var(--ink-soft); }
+  .oc-item .oi-name { flex: 1; min-width: 0; }
+  .oc-item .oi-size { font-size: 10.5px; color: var(--ink-soft); }
+  .oc-item .oi-nums { font-family: var(--font-mono); color: var(--ink-soft); white-space: nowrap; }
+
+  .oc-totals { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12.5px; }
+  .oc-note { font-size: 12.5px; color: var(--ink-soft); margin-top: 6px; }
+  .oc-actions { display: flex; gap: 6px; margin-top: 10px; }
 </style>
 </head>
 <body>
@@ -145,12 +199,23 @@
   </nav>
 
   <h1>銷售紀錄</h1>
-  <p class="sub">客人買了什麼、花多少成本、賣多少錢，一筆一筆記下來，自動幫你算利潤。存在雲端資料庫，也可以隨時按「匯出Excel備份」多留一份。</p>
+  <p class="sub">客人一次可能買好幾樣東西，點商品圖片加進這張訂單，選尺寸、填客人和狀態就能送出。存在雲端資料庫，也可以隨時按「匯出Excel備份」多留一份。</p>
+
+  <div class="period-row">
+    <label for="periodSelect">檢視期間</label>
+    <select id="periodSelect">
+      <option value="all">全部時間</option>
+      <option value="this-month">本月</option>
+      <option value="last-month">上個月</option>
+      <option value="this-year">今年</option>
+      <option value="last-year">去年</option>
+    </select>
+  </div>
 
   <div class="stat-row" id="statRow">
-    <div class="stat-tile"><div class="st-label">總筆數</div><div class="st-value" id="statCount">0</div></div>
+    <div class="stat-tile"><div class="st-label">總訂單數</div><div class="st-value" id="statCount">0</div></div>
     <div class="stat-tile"><div class="st-label">總淨利</div><div class="st-value" id="statProfit">NT$0</div></div>
-    <div class="stat-tile"><div class="st-label">平均每筆淨利</div><div class="st-value" id="statAvgProfit">NT$0</div></div>
+    <div class="stat-tile"><div class="st-label">平均每單淨利</div><div class="st-value" id="statAvgProfit">NT$0</div></div>
     <div class="stat-tile"><div class="st-label">平均淨利率</div><div class="st-value" id="statAvgMargin">0%</div></div>
   </div>
 
@@ -167,12 +232,12 @@
   <div class="layout">
     <section class="panel form-panel">
       <div class="panel-pad">
-        <h2 id="formTitle">新增一筆紀錄</h2>
+        <h2 id="formTitle">新增一筆訂單</h2>
         <p class="edit-banner" id="editBanner" style="display:none;">
           正在編輯：<span id="editBannerName"></span>
           <button type="button" id="cancelEdit">✕ 取消編輯</button>
         </p>
-        <form id="recordForm">
+        <form id="orderForm">
           <div class="two-col">
             <div class="field"><label>客人名稱</label><input type="text" id="customerName" placeholder="例如：阿美"></div>
             <div class="field"><label>日期</label><input type="date" id="soldAt"></div>
@@ -181,24 +246,51 @@
             <div class="field">
               <label>訂單狀態</label>
               <select id="orderStatus">
-                <option value="待付款">待付款</option>
-                <option value="已付款">已付款</option>
+                <option value="待處理">待處理</option>
+                <option value="已下貨">已下貨</option>
                 <option value="已出貨">已出貨</option>
                 <option value="已完成">已完成</option>
               </select>
             </div>
             <div class="field"><label>出貨期限<span class="hint">選填</span></label><input type="date" id="shipBy"></div>
           </div>
+          <div class="field"><label>給客人的運費 NT$<span class="hint">整張訂單共用一個</span></label><input type="number" id="shippingFee" min="0" step="1" placeholder="0"></div>
+
           <div class="field">
-            <label>快速選商品<span class="hint">選了會自動帶入下面的商品名稱／成本／售價／運費，選完還是可以改</span></label>
-            <select id="productSelect"><option value="">— 不使用，自己填 —</option></select>
+            <label>選商品<span class="hint">點圖片加進這張訂單，可以加好幾樣</span></label>
+            <div class="product-gallery" id="productGallery"><p class="empty-state">還沒有已儲存的商品，可以用下面「手動新增」。</p></div>
+            <div class="size-picker" id="sizePicker" style="display:none;">
+              <div class="sp-title">「<span id="spItemName"></span>」選尺寸</div>
+              <div class="sp-quick" id="spQuickSizes">
+                <button type="button" data-size="均碼">均碼</button>
+                <button type="button" data-size="S">S</button>
+                <button type="button" data-size="M">M</button>
+                <button type="button" data-size="L">L</button>
+                <button type="button" data-size="XL">XL</button>
+              </div>
+              <div class="sp-custom">
+                <input type="text" id="spCustomSize" placeholder="自訂尺寸">
+                <button type="button" id="spCustomAdd">加入</button>
+              </div>
+              <button type="button" id="spCancel" class="sp-cancel">✕ 取消</button>
+            </div>
           </div>
-          <div class="field"><label>商品名稱</label><input type="text" id="itemName" placeholder="例如：貓咪造型卡套" required></div>
-          <div class="two-col">
-            <div class="field"><label>成本 NT$</label><input type="number" id="cost" min="0" step="1" placeholder="0"></div>
-            <div class="field"><label>售價 NT$</label><input type="number" id="soldPrice" min="0" step="1" placeholder="0"></div>
+
+          <div class="field">
+            <label class="hint">或手動新增（不在清單裡的一次性商品）</label>
+            <div class="manual-add-row">
+              <input type="text" id="manualItemName" placeholder="商品名稱">
+              <input type="text" id="manualSize" placeholder="尺寸">
+              <input type="number" id="manualCost" placeholder="成本" min="0" step="1">
+              <input type="number" id="manualSoldPrice" placeholder="售價" min="0" step="1">
+              <button type="button" id="manualAddBtn" class="btn small">加入</button>
+            </div>
           </div>
-          <div class="field"><label>給客人的運費 NT$<span class="hint">選填，不算進淨利</span></label><input type="number" id="shippingFee" min="0" step="1" placeholder="0"></div>
+
+          <div class="field">
+            <label>這張訂單的商品<span class="count-badge" id="cartCount">0</span></label>
+            <div class="cart-list" id="cartList"><p class="empty-state">還沒有加入任何商品。</p></div>
+          </div>
 
           <div class="live-profit">
             <span class="chip" id="livePofitChip">淨利 NT$0</span>
@@ -206,10 +298,10 @@
           </div>
 
           <div class="field">
-            <label>照片<span class="hint">選填</span></label>
+            <label>訂單照片<span class="hint">選填，例如對話截圖</span></label>
             <label class="photo-drop">
               <input type="file" id="photoInput" accept="image/*">
-              <span class="ph-hint">點這裡選照片（png / jpg / webp / gif，最大 8MB）</span>
+              <span class="ph-hint" id="photoHint">點這裡選照片（png / jpg / webp / gif，最大 8MB）</span>
             </label>
             <img id="photoPreview" class="photo-preview" alt="預覽圖">
           </div>
@@ -218,21 +310,21 @@
 
           <p class="field-error" id="formError"></p>
 
-          <button type="submit" class="btn primary" id="submitBtn">✚ 新增紀錄</button>
+          <button type="submit" class="btn primary" id="submitBtn">✚ 送出訂單</button>
         </form>
       </div>
     </section>
 
     <section>
       <div class="list-head">
-        <h2>紀錄列表<span class="count-badge" id="listCount">0</span></h2>
+        <h2>訂單列表<span class="count-badge" id="listCount">0</span></h2>
         <input type="text" id="searchRecords" placeholder="搜尋客人或商品…">
       </div>
       <p class="filter-note" id="filterNote" style="display:none;">
         <span class="fn-label"></span>
         <button type="button" id="clearFilter">✕ 清除篩選</button>
       </p>
-      <div class="record-list" id="recordList"><p class="empty-state">載入中…</p></div>
+      <div class="order-list" id="orderList"><p class="empty-state">載入中…</p></div>
     </section>
   </div>
 </div>
@@ -242,11 +334,14 @@
 <script>
 (function () {
   var $ = function (id) { return document.getElementById(id); };
-  var allRecords = [];
+  var allOrders = [];
   var allProducts = [];
-  var ORDER_STATUSES = ['待付款', '已付款', '已出貨', '已完成'];
-  var activeStatusFilter = null; // '待付款' | '已付款' | '已出貨' | '已完成' | '__overdue__' | null
+  var cart = [];
+  var pendingProduct = null;
+  var ORDER_STATUSES = ['待處理', '已下貨', '已出貨', '已完成'];
+  var activeStatusFilter = null; // status string | '__overdue__' | null
   var editingId = null;
+  var currentPhotoUrl = null;
 
   $('soldAt').value = new Date().toISOString().slice(0, 10);
 
@@ -256,6 +351,8 @@
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
   }
+  function pad2(n) { return String(n).padStart(2, '0'); }
+  function ymd(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
 
   var toastTimer;
   function showToast(msg) {
@@ -266,9 +363,114 @@
     toastTimer = setTimeout(function () { t.classList.remove('show'); }, 2000);
   }
 
+  /* ---------- Product gallery + size picker + cart ---------- */
+
+  function renderGallery() {
+    var el = $('productGallery');
+    if (allProducts.length === 0) {
+      el.innerHTML = '<p class="empty-state">還沒有已儲存的商品，可以用下面「手動新增」。</p>';
+      return;
+    }
+    el.innerHTML = '';
+    allProducts.forEach(function (p) {
+      var card = document.createElement('div');
+      card.className = 'gallery-card';
+      var countInCart = cart.filter(function (c) { return c.productId === p.id; }).length;
+      card.innerHTML =
+        (p.photo_url ? '<img src="' + escapeHtml(p.photo_url) + '" alt="">' : '<div class="gc-placeholder">🖼️</div>') +
+        '<div class="gc-name">' + escapeHtml(p.name || '未命名商品') + '</div>' +
+        '<div class="gc-price">NT$' + fmt(p.final_price) + '</div>' +
+        (countInCart > 0 ? '<div class="gc-count">' + countInCart + '</div>' : '');
+      card.addEventListener('click', function () { openSizePicker(p); });
+      el.appendChild(card);
+    });
+  }
+
+  function openSizePicker(product) {
+    pendingProduct = product;
+    $('spItemName').textContent = product.name || '未命名商品';
+    $('spCustomSize').value = '';
+    $('sizePicker').style.display = '';
+    $('sizePicker').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function closeSizePicker() {
+    pendingProduct = null;
+    $('sizePicker').style.display = 'none';
+  }
+
+  function addProductToCart(product, size) {
+    cart.push({
+      productId: product.id,
+      itemName: product.name || '未命名商品',
+      size: size || '',
+      photoUrl: product.photo_url || null,
+      cost: Number(product.actual_cost) || 0,
+      soldPrice: Number(product.final_price) || 0
+    });
+    renderCart();
+    renderGallery();
+  }
+
+  $('spQuickSizes').addEventListener('click', function (e) {
+    var btn = e.target.closest('button[data-size]');
+    if (!btn || !pendingProduct) return;
+    addProductToCart(pendingProduct, btn.dataset.size);
+    closeSizePicker();
+  });
+  $('spCustomAdd').addEventListener('click', function () {
+    if (!pendingProduct) return;
+    addProductToCart(pendingProduct, $('spCustomSize').value.trim());
+    closeSizePicker();
+  });
+  $('spCancel').addEventListener('click', closeSizePicker);
+
+  $('manualAddBtn').addEventListener('click', function () {
+    var name = $('manualItemName').value.trim();
+    if (!name) { showToast('請先輸入商品名稱'); return; }
+    cart.push({
+      productId: null,
+      itemName: name,
+      size: $('manualSize').value.trim(),
+      photoUrl: null,
+      cost: Number($('manualCost').value) || 0,
+      soldPrice: Number($('manualSoldPrice').value) || 0
+    });
+    $('manualItemName').value = ''; $('manualSize').value = ''; $('manualCost').value = ''; $('manualSoldPrice').value = '';
+    renderCart();
+  });
+
+  function renderCart() {
+    $('cartCount').textContent = cart.length;
+    var el = $('cartList');
+    el.innerHTML = '';
+    if (cart.length === 0) {
+      el.innerHTML = '<p class="empty-state">還沒有加入任何商品。</p>';
+    } else {
+      cart.forEach(function (item, idx) {
+        var row = document.createElement('div');
+        row.className = 'cart-row';
+        row.innerHTML =
+          (item.photoUrl ? '<img src="' + escapeHtml(item.photoUrl) + '" alt="">' : '') +
+          '<div class="cr-name">' + escapeHtml(item.itemName) + (item.size ? ' <span class="cr-size">(' + escapeHtml(item.size) + ')</span>' : '') + '</div>' +
+          '<div class="cr-nums">NT$' + fmt(item.cost) + ' → NT$' + fmt(item.soldPrice) + '</div>' +
+          '<button type="button" class="cr-remove" data-idx="' + idx + '">✕</button>';
+        el.appendChild(row);
+      });
+      el.querySelectorAll('.cr-remove').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          cart.splice(Number(btn.dataset.idx), 1);
+          renderCart();
+          renderGallery();
+        });
+      });
+    }
+    updateLiveProfit();
+  }
+
   function updateLiveProfit() {
-    var cost = parseFloat($('cost').value) || 0;
-    var soldPrice = parseFloat($('soldPrice').value) || 0;
+    var cost = cart.reduce(function (s, it) { return s + it.cost; }, 0);
+    var soldPrice = cart.reduce(function (s, it) { return s + it.soldPrice; }, 0);
     var profit = soldPrice - cost;
     var margin = soldPrice > 0 ? (profit / soldPrice * 100) : 0;
     var pChip = $('livePofitChip'), mChip = $('liveMarginChip');
@@ -279,33 +481,16 @@
     pChip.className = 'chip ' + cls;
     mChip.className = 'chip ' + cls;
   }
-  $('cost').addEventListener('input', updateLiveProfit);
-  $('soldPrice').addEventListener('input', updateLiveProfit);
-  updateLiveProfit();
-
-  $('productSelect').addEventListener('change', function () {
-    var product = allProducts.filter(function (p) { return p.id === this.value; }, this)[0];
-    if (!product) return;
-    $('itemName').value = product.name || '';
-    $('cost').value = Math.round(product.actual_cost || 0);
-    $('soldPrice').value = Math.round(product.final_price || 0);
-    $('shippingFee').value = Math.round(product.domestic_ship || 0);
-    updateLiveProfit();
-  });
 
   fetch('/api/priced-items').then(function (res) {
     if (!res.ok) throw new Error();
     return res.json();
   }).then(function (products) {
     allProducts = products;
-    var sel = $('productSelect');
-    products.forEach(function (p) {
-      var opt = document.createElement('option');
-      opt.value = p.id;
-      opt.textContent = (p.name || '未命名商品') + '（' + p.category_label + '，售價 NT$' + Math.round(p.final_price) + '）';
-      sel.appendChild(opt);
-    });
-  }).catch(function () { /* 商品清單抓不到就只能手動填，不擋主流程 */ });
+    renderGallery();
+  }).catch(function () { /* 商品清單抓不到就只能手動新增，不擋主流程 */ });
+
+  /* ---------- Order-level photo ---------- */
 
   $('photoInput').addEventListener('change', function () {
     var file = this.files[0];
@@ -316,70 +501,65 @@
     reader.readAsDataURL(file);
   });
 
-  function updateStats() {
-    var count = allRecords.length;
-    var totalProfit = allRecords.reduce(function (sum, r) { return sum + (Number(r.profit) || 0); }, 0);
-    var totalSoldPrice = allRecords.reduce(function (sum, r) { return sum + (Number(r.sold_price) || 0); }, 0);
+  /* ---------- Period filter ---------- */
+
+  function computeDateRange(key) {
+    var now = new Date();
+    var y = now.getFullYear(), m = now.getMonth();
+    if (key === 'this-month') return { start: ymd(new Date(y, m, 1)), end: ymd(new Date(y, m + 1, 0)) };
+    if (key === 'last-month') return { start: ymd(new Date(y, m - 1, 1)), end: ymd(new Date(y, m, 0)) };
+    if (key === 'this-year') return { start: y + '-01-01', end: y + '-12-31' };
+    if (key === 'last-year') return { start: (y - 1) + '-01-01', end: (y - 1) + '-12-31' };
+    return null;
+  }
+
+  function orderProfit(o) {
+    return (o.order_items || []).reduce(function (s, it) { return s + ((Number(it.sold_price) || 0) - (Number(it.cost) || 0)); }, 0);
+  }
+  function orderSoldTotal(o) {
+    return (o.order_items || []).reduce(function (s, it) { return s + (Number(it.sold_price) || 0); }, 0);
+  }
+
+  function getBaseFiltered() {
+    var range = computeDateRange($('periodSelect').value);
+    var searchText = ($('searchRecords').value || '').trim().toLowerCase();
+    return allOrders.filter(function (o) {
+      if (range && (o.sold_at < range.start || o.sold_at > range.end)) return false;
+      if (searchText) {
+        var matchCustomer = (o.customer_name || '').toLowerCase().indexOf(searchText) !== -1;
+        var matchItem = (o.order_items || []).some(function (it) { return (it.item_name || '').toLowerCase().indexOf(searchText) !== -1; });
+        if (!matchCustomer && !matchItem) return false;
+      }
+      return true;
+    });
+  }
+
+  $('periodSelect').addEventListener('change', renderAll);
+  $('searchRecords').addEventListener('input', renderAll);
+
+  /* ---------- Stats / breakdown / status overview ---------- */
+
+  function updateStats(baseOrders) {
+    var count = baseOrders.length;
+    var totalProfit = baseOrders.reduce(function (s, o) { return s + orderProfit(o); }, 0);
+    var totalSold = baseOrders.reduce(function (s, o) { return s + orderSoldTotal(o); }, 0);
     var avgProfit = count > 0 ? totalProfit / count : 0;
-    var avgMargin = totalSoldPrice > 0 ? (totalProfit / totalSoldPrice * 100) : 0;
+    var avgMargin = totalSold > 0 ? (totalProfit / totalSold * 100) : 0;
     $('statCount').textContent = count;
     $('statProfit').textContent = 'NT$' + fmt(totalProfit);
     $('statAvgProfit').textContent = 'NT$' + fmt(avgProfit);
     $('statAvgMargin').textContent = Math.round(avgMargin) + '%';
-
-    renderProductBreakdown();
-    renderStatusOverview();
   }
 
-  function renderStatusOverview() {
-    var today = new Date().toISOString().slice(0, 10);
-    var counts = { '待付款': 0, '已付款': 0, '已出貨': 0, '已完成': 0 };
-    var unpaidAmount = 0;
-    var overdueCount = 0;
-
-    allRecords.forEach(function (r) {
-      var status = ORDER_STATUSES.indexOf(r.order_status) !== -1 ? r.order_status : ORDER_STATUSES[0];
-      counts[status] += 1;
-      if (status === '待付款') unpaidAmount += (Number(r.sold_price) || 0) + (Number(r.shipping_fee) || 0);
-      if (r.ship_by && r.ship_by < today && (status === '待付款' || status === '已付款')) overdueCount += 1;
-    });
-
-    function tileClass(key) {
-      return 'so-tile s-' + (key === '__overdue__' ? 'overdue' : key) + (activeStatusFilter === key ? ' active' : '');
-    }
-
-    var grid = $('statusOverviewGrid');
-    grid.innerHTML =
-      '<button type="button" class="' + tileClass('待付款') + '" data-status="待付款"><div class="so-label">待付款</div><div class="so-value">' + counts['待付款'] + ' 筆</div><div class="so-sub">NT$' + fmt(unpaidAmount) + '</div></button>' +
-      '<button type="button" class="' + tileClass('已付款') + '" data-status="已付款"><div class="so-label">已付款</div><div class="so-value">' + counts['已付款'] + ' 筆</div></button>' +
-      '<button type="button" class="' + tileClass('已出貨') + '" data-status="已出貨"><div class="so-label">已出貨</div><div class="so-value">' + counts['已出貨'] + ' 筆</div></button>' +
-      '<button type="button" class="' + tileClass('已完成') + '" data-status="已完成"><div class="so-label">已完成</div><div class="so-value">' + counts['已完成'] + ' 筆</div></button>' +
-      (overdueCount > 0 ? '<button type="button" class="' + tileClass('__overdue__') + '" data-status="__overdue__"><div class="so-label">逾期未出貨</div><div class="so-value">' + overdueCount + ' 筆</div></button>' : '');
-  }
-
-  function applyStatusFilter(status) {
-    activeStatusFilter = (activeStatusFilter === status) ? null : status;
-    renderStatusOverview();
-    renderList($('searchRecords').value);
-  }
-  $('statusOverviewGrid').addEventListener('click', function (e) {
-    var btn = e.target.closest('[data-status]');
-    if (!btn) return;
-    applyStatusFilter(btn.dataset.status);
-  });
-  $('clearFilter').addEventListener('click', function () {
-    activeStatusFilter = null;
-    renderStatusOverview();
-    renderList($('searchRecords').value);
-  });
-
-  function renderProductBreakdown() {
+  function renderProductBreakdown(baseOrders) {
     var byProduct = {};
-    allRecords.forEach(function (r) {
-      var name = r.item_name || '未命名商品';
-      if (!byProduct[name]) byProduct[name] = { name: name, count: 0, profit: 0 };
-      byProduct[name].count += 1;
-      byProduct[name].profit += Number(r.profit) || 0;
+    baseOrders.forEach(function (o) {
+      (o.order_items || []).forEach(function (it) {
+        var name = it.item_name || '未命名商品';
+        if (!byProduct[name]) byProduct[name] = { name: name, count: 0, profit: 0 };
+        byProduct[name].count += 1;
+        byProduct[name].profit += (Number(it.sold_price) || 0) - (Number(it.cost) || 0);
+      });
     });
     var rows = Object.keys(byProduct).map(function (k) { return byProduct[k]; });
     rows.sort(function (a, b) { return b.profit - a.profit; });
@@ -395,32 +575,64 @@
       var row = document.createElement('div');
       row.className = 'pb-row';
       row.innerHTML =
-        '<div><div class="pb-name">' + escapeHtml(r.name) + '</div><div class="pb-sub">賣了 ' + r.count + ' 筆</div></div>' +
+        '<div><div class="pb-name">' + escapeHtml(r.name) + '</div><div class="pb-sub">賣了 ' + r.count + ' 件</div></div>' +
         '<div class="pb-profit">NT$' + fmt(r.profit) + '</div>';
       el.appendChild(row);
     });
   }
 
-  function renderList(filter) {
-    filter = (filter || '').trim().toLowerCase();
+  function renderStatusOverview(baseOrders) {
     var today = new Date().toISOString().slice(0, 10);
+    var counts = { '待處理': 0, '已下貨': 0, '已出貨': 0, '已完成': 0 };
+    var amounts = { '待處理': 0, '已下貨': 0, '已出貨': 0, '已完成': 0 };
+    var overdueCount = 0;
 
-    var items = allRecords.filter(function (r) {
-      var status = ORDER_STATUSES.indexOf(r.order_status) !== -1 ? r.order_status : ORDER_STATUSES[0];
+    baseOrders.forEach(function (o) {
+      var status = ORDER_STATUSES.indexOf(o.order_status) !== -1 ? o.order_status : ORDER_STATUSES[0];
+      counts[status] += 1;
+      amounts[status] += orderSoldTotal(o) + (Number(o.shipping_fee) || 0);
+      var notShippedYet = (status === ORDER_STATUSES[0] || status === ORDER_STATUSES[1]);
+      if (o.ship_by && o.ship_by < today && notShippedYet) overdueCount += 1;
+    });
+
+    function tileClass(key) {
+      return 'so-tile s-' + (key === '__overdue__' ? 'overdue' : key) + (activeStatusFilter === key ? ' active' : '');
+    }
+
+    var grid = $('statusOverviewGrid');
+    grid.innerHTML =
+      ORDER_STATUSES.map(function (s) {
+        return '<button type="button" class="' + tileClass(s) + '" data-status="' + s + '"><div class="so-label">' + s + '</div><div class="so-value">' + counts[s] + ' 單</div><div class="so-sub">NT$' + fmt(amounts[s]) + '</div></button>';
+      }).join('') +
+      (overdueCount > 0 ? '<button type="button" class="' + tileClass('__overdue__') + '" data-status="__overdue__"><div class="so-label">逾期未出貨</div><div class="so-value">' + overdueCount + ' 單</div></button>' : '');
+  }
+
+  $('statusOverviewGrid').addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-status]');
+    if (!btn) return;
+    activeStatusFilter = (activeStatusFilter === btn.dataset.status) ? null : btn.dataset.status;
+    renderAll();
+  });
+  $('clearFilter').addEventListener('click', function () {
+    activeStatusFilter = null;
+    renderAll();
+  });
+
+  /* ---------- Order list ---------- */
+
+  function renderOrderList(baseOrders) {
+    var today = new Date().toISOString().slice(0, 10);
+    var items = baseOrders.filter(function (o) {
       if (activeStatusFilter === '__overdue__') {
-        var isOverdue = r.ship_by && r.ship_by < today && (status === '待付款' || status === '已付款');
-        if (!isOverdue) return false;
-      } else if (activeStatusFilter && status !== activeStatusFilter) {
-        return false;
+        var status = ORDER_STATUSES.indexOf(o.order_status) !== -1 ? o.order_status : ORDER_STATUSES[0];
+        var notShippedYet = (status === ORDER_STATUSES[0] || status === ORDER_STATUSES[1]);
+        return o.ship_by && o.ship_by < today && notShippedYet;
       }
-      if (filter) {
-        return (r.customer_name || '').toLowerCase().indexOf(filter) !== -1 ||
-               (r.item_name || '').toLowerCase().indexOf(filter) !== -1;
-      }
+      if (activeStatusFilter && o.order_status !== activeStatusFilter) return false;
       return true;
     });
 
-    $('listCount').textContent = items.length + (activeStatusFilter ? ' / ' + allRecords.length : '');
+    $('listCount').textContent = items.length + (activeStatusFilter ? ' / ' + baseOrders.length : '');
 
     var filterNote = $('filterNote');
     if (activeStatusFilter) {
@@ -430,62 +642,68 @@
       filterNote.style.display = 'none';
     }
 
-    var listEl = $('recordList');
+    var listEl = $('orderList');
     listEl.innerHTML = '';
     if (items.length === 0) {
-      var msg = allRecords.length === 0 ? '還沒有任何銷售紀錄，左邊填一筆試試看。' : '找不到符合的紀錄。';
+      var msg = allOrders.length === 0 ? '還沒有任何訂單，左邊點商品試試看。' : '找不到符合的訂單。';
       listEl.innerHTML = '<p class="empty-state">' + msg + '</p>';
       return;
     }
 
-    items.forEach(function (r) {
+    items.forEach(function (o) {
       var card = document.createElement('div');
-      card.className = 'record-card';
-      var thumbHtml = r.photo_url
-        ? '<a href="' + escapeHtml(r.photo_url) + '" target="_blank" rel="noopener"><img class="record-thumb" src="' + escapeHtml(r.photo_url) + '" alt=""></a>'
-        : '<div class="record-thumb placeholder">🖼️</div>';
-      var cls = 'good';
-      if (r.profit < 0) cls = 'bad'; else if (r.sold_price > 0 && (r.profit / r.sold_price * 100) < 25) cls = 'warn';
+      card.className = 'order-card';
 
-      var status = ORDER_STATUSES.indexOf(r.order_status) !== -1 ? r.order_status : ORDER_STATUSES[0];
+      var status = ORDER_STATUSES.indexOf(o.order_status) !== -1 ? o.order_status : ORDER_STATUSES[0];
       var statusOptions = ORDER_STATUSES.map(function (s) {
         return '<option value="' + s + '"' + (s === status ? ' selected' : '') + '>' + s + '</option>';
       }).join('');
+      var notShippedYet = (status === ORDER_STATUSES[0] || status === ORDER_STATUSES[1]);
+      var isOverdue = o.ship_by && o.ship_by < today && notShippedYet;
 
-      var today = new Date().toISOString().slice(0, 10);
-      var isOverdue = r.ship_by && r.ship_by < today && (status === '待付款' || status === '已付款');
-      var shipByHtml = ' · <span class="ship-by-note' + (isOverdue ? ' overdue' : '') + '">' +
-        (isOverdue ? '⚠ 逾期未出貨 · ' : '') + '出貨期限：' +
-        '<input type="date" class="ship-by-input" data-action="ship-by" value="' + (r.ship_by || '') + '" style="border:none;background:none;font:inherit;color:inherit;"></span>';
+      var itemsHtml = (o.order_items || []).map(function (it) {
+        var thumb = it.photo_url
+          ? '<img src="' + escapeHtml(it.photo_url) + '" alt="">'
+          : '<div class="oi-placeholder">🖼️</div>';
+        return '<div class="oc-item">' + thumb +
+          '<span class="oi-name">' + escapeHtml(it.item_name || '未命名商品') + (it.size ? ' <span class="oi-size">(' + escapeHtml(it.size) + ')</span>' : '') + '</span>' +
+          '<span class="oi-nums">NT$' + fmt(it.cost) + ' → NT$' + fmt(it.sold_price) + '</span>' +
+          '</div>';
+      }).join('');
+
+      var totalCost = (o.order_items || []).reduce(function (s, it) { return s + (Number(it.cost) || 0); }, 0);
+      var totalSold = orderSoldTotal(o);
+      var profit = orderProfit(o);
+      var cls = 'good';
+      if (profit < 0) cls = 'bad'; else if (totalSold > 0 && (profit / totalSold * 100) < 25) cls = 'warn';
 
       card.innerHTML =
-        thumbHtml +
-        '<div class="record-main">' +
-          '<div class="rm-top"><span class="rm-title">' + escapeHtml(r.item_name || '未命名商品') + '</span><span class="rm-date">' + escapeHtml(r.sold_at) + '</span></div>' +
-          '<div class="rm-sub">' + (r.customer_name ? '客人：' + escapeHtml(r.customer_name) : '未填客人名稱') +
-            ' · <select class="status-select s-' + status + '" data-action="status">' + statusOptions + '</select>' +
-            shipByHtml +
-          '</div>' +
-          '<div class="rm-nums">' +
-            '<span>成本 NT$' + fmt(r.cost) + '</span>' +
-            '<span>售價 NT$' + fmt(r.sold_price) + '</span>' +
-            (r.shipping_fee ? '<span>運費 NT$' + fmt(r.shipping_fee) + '</span>' : '') +
-            '<span class="chip ' + cls + '">淨利 NT$' + fmt(r.profit) + '</span>' +
-          '</div>' +
-          (r.note ? '<div class="rm-note">' + escapeHtml(r.note) + '</div>' : '') +
+        '<div class="oc-top"><span class="oc-customer">' + escapeHtml(o.customer_name || '未填客人名稱') + '</span><span class="oc-date">' + escapeHtml(o.sold_at) + '</span></div>' +
+        '<div class="oc-controls">' +
+          '<select class="status-select s-' + status + '" data-action="status">' + statusOptions + '</select>' +
+          '<span class="ship-by-note' + (isOverdue ? ' overdue' : '') + '">' + (isOverdue ? '⚠ 逾期未出貨 · ' : '') + '出貨期限：<input type="date" data-action="ship-by" value="' + (o.ship_by || '') + '"></span>' +
+          (o.photo_url ? '<a class="oc-photo-link" href="' + escapeHtml(o.photo_url) + '" target="_blank" rel="noopener">📎 訂單照片</a>' : '') +
         '</div>' +
-        '<div class="record-actions"><button type="button" class="btn small" data-action="edit">編輯</button><button type="button" class="btn small ghost" data-action="delete">刪除</button></div>';
+        '<div class="oc-items">' + itemsHtml + '</div>' +
+        '<div class="oc-totals">' +
+          '<span>成本 NT$' + fmt(totalCost) + '</span>' +
+          '<span>售價 NT$' + fmt(totalSold) + '</span>' +
+          (o.shipping_fee ? '<span>運費 NT$' + fmt(o.shipping_fee) + '</span>' : '') +
+          '<span class="chip ' + cls + '">淨利 NT$' + fmt(profit) + '</span>' +
+        '</div>' +
+        (o.note ? '<div class="oc-note">' + escapeHtml(o.note) + '</div>' : '') +
+        '<div class="oc-actions"><button type="button" class="btn small" data-action="edit">編輯</button><button type="button" class="btn small ghost" data-action="delete">刪除</button></div>';
 
       listEl.appendChild(card);
-      card.querySelector('[data-action="edit"]').addEventListener('click', function () { editRecord(r); });
+
+      card.querySelector('[data-action="edit"]').addEventListener('click', function () { editOrder(o); });
       card.querySelector('[data-action="delete"]').addEventListener('click', async function () {
         try {
-          var res = await fetch('/api/sales-records/' + r.id, { method: 'DELETE' });
+          var res = await fetch('/api/orders/' + o.id, { method: 'DELETE' });
           if (!res.ok) throw new Error();
-          allRecords = allRecords.filter(function (x) { return x.id !== r.id; });
-          if (editingId === r.id) exitEditRecordMode();
-          renderList($('searchRecords').value);
-          updateStats();
+          allOrders = allOrders.filter(function (x) { return x.id !== o.id; });
+          if (editingId === o.id) exitEditMode();
+          renderAll();
           showToast('已刪除');
         } catch (e) { showToast('刪除失敗，請再試一次'); }
       });
@@ -494,15 +712,14 @@
       statusSelect.addEventListener('change', async function () {
         var newStatus = this.value;
         try {
-          var res = await fetch('/api/sales-records/' + r.id, {
+          var res = await fetch('/api/orders/' + o.id, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ orderStatus: newStatus })
           });
           if (!res.ok) throw new Error();
-          r.order_status = newStatus;
-          renderList($('searchRecords').value);
-          updateStats();
+          o.order_status = newStatus;
+          renderAll();
           showToast('狀態已更新');
         } catch (e) {
           statusSelect.value = status;
@@ -514,132 +731,132 @@
       shipByInput.addEventListener('change', async function () {
         var newShipBy = this.value;
         try {
-          var res = await fetch('/api/sales-records/' + r.id, {
+          var res = await fetch('/api/orders/' + o.id, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ shipBy: newShipBy })
           });
           if (!res.ok) throw new Error();
-          r.ship_by = newShipBy || null;
-          renderList($('searchRecords').value);
-          updateStats();
+          o.ship_by = newShipBy || null;
+          renderAll();
           showToast('出貨期限已更新');
         } catch (e) {
-          shipByInput.value = r.ship_by || '';
+          shipByInput.value = o.ship_by || '';
           showToast('更新失敗，請再試一次');
         }
       });
     });
   }
 
-  function editRecord(r) {
-    editingId = r.id;
-    $('customerName').value = r.customer_name || '';
-    $('soldAt').value = r.sold_at || new Date().toISOString().slice(0, 10);
-    $('orderStatus').value = ORDER_STATUSES.indexOf(r.order_status) !== -1 ? r.order_status : ORDER_STATUSES[0];
-    $('shipBy').value = r.ship_by || '';
-    $('productSelect').value = '';
-    $('itemName').value = r.item_name || '';
-    $('cost').value = r.cost;
-    $('soldPrice').value = r.sold_price;
-    $('shippingFee').value = r.shipping_fee;
-    $('note').value = r.note || '';
-    updateLiveProfit();
+  function renderAll() {
+    var base = getBaseFiltered();
+    updateStats(base);
+    renderProductBreakdown(base);
+    renderStatusOverview(base);
+    renderOrderList(base);
+  }
 
-    $('formTitle').textContent = '編輯這筆紀錄';
-    $('editBannerName').textContent = r.item_name || '未命名商品';
+  /* ---------- Create / edit order ---------- */
+
+  function editOrder(o) {
+    editingId = o.id;
+    $('customerName').value = o.customer_name || '';
+    $('soldAt').value = o.sold_at || new Date().toISOString().slice(0, 10);
+    $('orderStatus').value = ORDER_STATUSES.indexOf(o.order_status) !== -1 ? o.order_status : ORDER_STATUSES[0];
+    $('shipBy').value = o.ship_by || '';
+    $('shippingFee').value = o.shipping_fee || '';
+    $('note').value = o.note || '';
+
+    cart = (o.order_items || []).map(function (it) {
+      return { productId: null, itemName: it.item_name, size: it.size || '', photoUrl: it.photo_url || null, cost: Number(it.cost) || 0, soldPrice: Number(it.sold_price) || 0 };
+    });
+    renderCart();
+    renderGallery();
+
+    currentPhotoUrl = o.photo_url || null;
+    if (o.photo_url) { $('photoPreview').src = o.photo_url; $('photoPreview').style.display = 'block'; }
+    else { $('photoPreview').style.display = 'none'; }
+    $('photoInput').value = '';
+
+    $('formTitle').textContent = '編輯這張訂單';
+    $('editBannerName').textContent = o.customer_name || '未填客人名稱';
     $('editBanner').style.display = '';
     $('submitBtn').textContent = '💾 儲存修改';
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  function exitEditRecordMode() {
+  function exitEditMode() {
     editingId = null;
-    $('formTitle').textContent = '新增一筆紀錄';
+    $('formTitle').textContent = '新增一筆訂單';
     $('editBanner').style.display = 'none';
-    $('submitBtn').textContent = '✚ 新增紀錄';
+    $('submitBtn').textContent = '✚ 送出訂單';
   }
 
-  $('cancelEdit').addEventListener('click', function () {
-    exitEditRecordMode();
-    $('recordForm').reset();
+  function resetForm() {
+    exitEditMode();
+    $('orderForm').reset();
     $('soldAt').value = new Date().toISOString().slice(0, 10);
     $('photoPreview').style.display = 'none';
-    updateLiveProfit();
-  });
+    currentPhotoUrl = null;
+    cart = [];
+    renderCart();
+    renderGallery();
+    closeSizePicker();
+  }
 
-  $('searchRecords').addEventListener('input', function () { renderList(this.value); });
+  $('cancelEdit').addEventListener('click', resetForm);
 
-  $('recordForm').addEventListener('submit', async function (e) {
+  $('orderForm').addEventListener('submit', async function (e) {
     e.preventDefault();
     var errEl = $('formError');
     errEl.classList.remove('show');
 
-    if (!$('itemName').value.trim()) {
-      errEl.textContent = '商品名稱不能空白。';
+    if (cart.length === 0) {
+      errEl.textContent = '這張訂單還沒有加入任何商品。';
       errEl.classList.add('show');
       return;
     }
 
-    var btn = $('submitBtn');
     var isEditing = !!editingId;
+    var fd = new FormData();
+    fd.append('customerName', $('customerName').value.trim());
+    fd.append('orderStatus', $('orderStatus').value);
+    fd.append('shipBy', $('shipBy').value || '');
+    fd.append('shippingFee', $('shippingFee').value || '0');
+    fd.append('note', $('note').value.trim());
+    fd.append('soldAt', $('soldAt').value || new Date().toISOString().slice(0, 10));
+    fd.append('items', JSON.stringify(cart.map(function (it) {
+      return { itemName: it.itemName, size: it.size, photoUrl: it.photoUrl, cost: it.cost, soldPrice: it.soldPrice };
+    })));
+    if ($('photoInput').files[0]) {
+      fd.append('photo', $('photoInput').files[0]);
+    } else if (isEditing) {
+      fd.append('keepPhotoUrl', currentPhotoUrl || '');
+    }
+
+    var btn = $('submitBtn');
     btn.disabled = true;
-
     try {
-      var res, saved;
-      if (isEditing) {
-        res = await fetch('/api/sales-records/' + editingId, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            customerName: $('customerName').value.trim(),
-            itemName: $('itemName').value.trim(),
-            cost: $('cost').value || '0',
-            soldPrice: $('soldPrice').value || '0',
-            shippingFee: $('shippingFee').value || '0',
-            soldAt: $('soldAt').value || new Date().toISOString().slice(0, 10),
-            note: $('note').value.trim(),
-            orderStatus: $('orderStatus').value,
-            shipBy: $('shipBy').value || ''
-          })
-        });
-      } else {
-        var fd = new FormData();
-        fd.append('customerName', $('customerName').value.trim());
-        fd.append('itemName', $('itemName').value.trim());
-        fd.append('cost', $('cost').value || '0');
-        fd.append('soldPrice', $('soldPrice').value || '0');
-        fd.append('shippingFee', $('shippingFee').value || '0');
-        fd.append('soldAt', $('soldAt').value || new Date().toISOString().slice(0, 10));
-        fd.append('note', $('note').value.trim());
-        fd.append('orderStatus', $('orderStatus').value);
-        fd.append('shipBy', $('shipBy').value || '');
-        if ($('photoInput').files[0]) fd.append('photo', $('photoInput').files[0]);
-        res = await fetch('/api/sales-records', { method: 'POST', body: fd });
-      }
-
+      var res = await fetch(isEditing ? '/api/orders/' + editingId : '/api/orders', {
+        method: isEditing ? 'PUT' : 'POST',
+        body: fd
+      });
       if (!res.ok) {
         var errBody = await res.json().catch(function () { return {}; });
         throw new Error(errBody.error || (isEditing ? '更新失敗' : '新增失敗'));
       }
-      saved = await res.json();
+      var saved = await res.json();
 
       if (isEditing) {
-        var idx = allRecords.findIndex(function (x) { return x.id === saved.id; });
-        if (idx !== -1) allRecords[idx] = saved;
-        exitEditRecordMode();
+        var idx = allOrders.findIndex(function (x) { return x.id === saved.id; });
+        if (idx !== -1) allOrders[idx] = saved;
         showToast('已更新');
       } else {
-        allRecords.unshift(saved);
-        showToast('已新增紀錄');
+        allOrders.unshift(saved);
+        showToast('已新增訂單');
       }
-      renderList($('searchRecords').value);
-      updateStats();
-
-      this.reset();
-      $('soldAt').value = new Date().toISOString().slice(0, 10);
-      $('photoPreview').style.display = 'none';
-      updateLiveProfit();
+      resetForm();
+      renderAll();
     } catch (err) {
       errEl.textContent = err.message || (isEditing ? '更新失敗，請再試一次。' : '新增失敗，請再試一次。');
       errEl.classList.add('show');
@@ -648,15 +865,16 @@
     }
   });
 
-  fetch('/api/sales-records').then(function (res) {
+  renderCart();
+
+  fetch('/api/orders').then(function (res) {
     if (!res.ok) throw new Error();
     return res.json();
   }).then(function (data) {
-    allRecords = data;
-    renderList('');
-    updateStats();
+    allOrders = data;
+    renderAll();
   }).catch(function () {
-    $('recordList').innerHTML = '<p class="empty-state">紀錄載入失敗，請重新整理頁面再試一次。</p>';
+    $('orderList').innerHTML = '<p class="empty-state">訂單載入失敗，請重新整理頁面再試一次。</p>';
   });
 })();
 </script>

@@ -55,13 +55,14 @@ daigou-shop/
 │   ├── auth.js             # 登入 / 登出 / 驗證 middleware
 │   ├── supabaseClient.js   # Supabase 連線
 │   └── routes/
-│       ├── pricedItems.js  # 定價計算機清單 API
-│       ├── salesRecords.js # 銷售紀錄 API（含照片上傳）
+│       ├── pricedItems.js  # 定價計算機清單 API（含商品照片）
+│       ├── orders.js       # 訂單 API（一張訂單可以有多樣商品）
+│       ├── uploads.js      # 共用照片上傳端點
 │       └── exportExcel.js  # Excel 匯出
 ├── public/
 │   ├── login.html
 │   ├── pricing.html         # 定價計算機頁面
-│   ├── records.html         # 銷售紀錄頁面
+│   ├── records.html         # 銷售紀錄頁面（點商品圖片建立訂單）
 │   └── shared.css           # 共用樣式
 └── supabase-schema.sql      # 資料庫建表 SQL（貼到 Supabase SQL Editor 執行）
 ```

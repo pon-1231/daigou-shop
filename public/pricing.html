@@ -112,6 +112,19 @@
   .si-cat-badge { font-size: 10.5px; padding: 2px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); margin-left: 8px; font-weight: 600; }
   .si-sub { font-size: 12px; color: var(--ink-soft); margin-top: 4px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
   .si-actions { display: flex; gap: 6px; flex-shrink: 0; }
+  .si-thumb {
+    width: 44px; height: 44px; border-radius: var(--radius-sm); object-fit: cover; flex-shrink: 0;
+    background: var(--bg); border: 1px solid var(--line);
+  }
+  .si-text { flex: 1; min-width: 0; }
+
+  .photo-drop {
+    border: 1px dashed var(--line-strong); border-radius: var(--radius-sm); padding: 14px;
+    text-align: center; cursor: pointer; background: var(--bg);
+  }
+  .photo-drop input { display: none; }
+  .photo-drop .ph-hint { font-size: 12.5px; color: var(--ink-soft); }
+  .photo-preview { margin-top: 10px; max-width: 100%; max-height: 140px; border-radius: var(--radius-sm); display: none; }
 
   .edit-banner {
     display: flex; align-items: center; gap: 10px; font-size: 13px;
@@ -166,6 +179,15 @@
         <div class="product-name-row">
           <label>商品名稱<span class="hint">選填，方便之後在清單裡搜尋類似商品</span></label>
           <input type="text" id="productName" placeholder="例如：貓咪造型卡套">
+        </div>
+
+        <div class="product-name-row">
+          <label>商品照片<span class="hint">選填，之後在銷售紀錄可以點圖選這個商品</span></label>
+          <label class="photo-drop">
+            <input type="file" id="photoInput" accept="image/*">
+            <span class="ph-hint" id="photoHint">點這裡選照片（png / jpg / webp / gif，最大 8MB）</span>
+          </label>
+          <img id="photoPreview" class="photo-preview" alt="預覽圖">
         </div>
 
         <div class="field-group">
@@ -292,6 +314,7 @@
   var lastState = { chinaCost: 0, actualCost: 0, finalPrice: 0, profit: 0, margin: 0 };
   var allSavedItems = [];
   var editingId = null;
+  var currentPhotoUrl = null;
 
   var savedFx = null;
   try { savedFx = localStorage.getItem('daigou_fx_rate'); } catch (e) {}
@@ -313,6 +336,35 @@
     t.classList.add('show');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(function () { t.classList.remove('show'); }, 2000);
+  }
+
+  $('photoInput').addEventListener('change', async function () {
+    var file = this.files[0];
+    if (!file) return;
+    var hint = $('photoHint');
+    var original = hint.textContent;
+    hint.textContent = '上傳中…';
+    try {
+      var fd = new FormData();
+      fd.append('photo', file);
+      var res = await fetch('/api/uploads/photo', { method: 'POST', body: fd });
+      if (!res.ok) throw new Error();
+      var data = await res.json();
+      currentPhotoUrl = data.url;
+      $('photoPreview').src = data.url;
+      $('photoPreview').style.display = 'block';
+      hint.textContent = '已上傳，點這裡可以換一張';
+    } catch (e) {
+      hint.textContent = original;
+      showToast('照片上傳失敗，請再試一次');
+    }
+  });
+
+  function clearPhoto() {
+    currentPhotoUrl = null;
+    $('photoInput').value = '';
+    $('photoPreview').style.display = 'none';
+    $('photoHint').textContent = '點這裡選照片（png / jpg / webp / gif，最大 8MB）';
   }
 
   function setCategory(def, keepMultiplier) {
@@ -387,8 +439,12 @@
       var row = document.createElement('div');
       row.className = 'saved-item';
       var dateStr = new Date(it.created_at).toLocaleDateString('zh-Hant-TW');
+      var thumbHtml = it.photo_url
+        ? '<img class="si-thumb" src="' + escapeHtml(it.photo_url) + '" alt="">'
+        : '';
       row.innerHTML =
-        '<div class="si-main">' +
+        thumbHtml +
+        '<div class="si-text">' +
           '<div class="si-name">' + escapeHtml(it.name || '未命名商品') + '<span class="si-cat-badge">' + escapeHtml(it.category_label) + '</span></div>' +
           '<div class="si-sub">實際成本 NT$' + fmt(it.actual_cost) + ' → 售價 NT$' + fmt(it.final_price) + ' · 淨利率 ' + Math.round(it.margin) + '% · ' + dateStr + '</div>' +
         '</div>' +
@@ -432,12 +488,21 @@
 
   function applyItem(it) {
     exitEditMode();
+    clearPhoto();
     fillFormFromItem(it);
   }
 
   function editItem(it) {
     editingId = it.id;
     fillFormFromItem(it);
+    if (it.photo_url) {
+      currentPhotoUrl = it.photo_url;
+      $('photoPreview').src = it.photo_url;
+      $('photoPreview').style.display = 'block';
+      $('photoHint').textContent = '已上傳，點這裡可以換一張';
+    } else {
+      clearPhoto();
+    }
     $('editBannerName').textContent = it.name || '未命名商品';
     $('editBanner').style.display = '';
     $('saveItem').textContent = '💾 儲存修改';
@@ -468,6 +533,8 @@
   });
 
   $('fillExample').addEventListener('click', function () {
+    exitEditMode();
+    clearPhoto();
     $('productName').value = '範例商品';
     $('rmbPrice').value = 20; $('rmbShip').value = 0; $('fxRate').value = 4.5;
     $('crossShip').value = 15; $('packaging').value = 5; $('paymentFee').value = 10; $('domesticShip').value = 60;
@@ -477,6 +544,7 @@
 
   $('resetAll').addEventListener('click', function () {
     exitEditMode();
+    clearPhoto();
     fields.forEach(function (id) { $(id).value = ''; });
     $('fxRate').value = 4.5;
     $('productName').value = '';
@@ -499,7 +567,8 @@
       multiplier: parseFloat(slider.value) || 0,
       manualPrice: manualPrice.value.trim(),
       chinaCost: lastState.chinaCost, actualCost: lastState.actualCost, finalPrice: lastState.finalPrice,
-      profit: lastState.profit, margin: lastState.margin
+      profit: lastState.profit, margin: lastState.margin,
+      photoUrl: currentPhotoUrl
     };
     var btn = $('saveItem');
     var isEditing = !!editingId;
