@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>銷售紀錄 · 代購賣場工具</title>
+<link rel="stylesheet" href="/shared.css">
+<style>
+  .layout { display: grid; grid-template-columns: 380px 1fr; gap: 22px; align-items: start; }
+  @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+
+  .form-panel { position: sticky; top: 20px; }
+  .field { margin-bottom: 16px; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  .photo-drop {
+    border: 1px dashed var(--line-strong);
+    border-radius: var(--radius-sm);
+    padding: 14px;
+    text-align: center;
+    cursor: pointer;
+    background: var(--bg);
+  }
+  .photo-drop input { display: none; }
+  .photo-drop .ph-hint { font-size: 12.5px; color: var(--ink-soft); }
+  .photo-preview { margin-top: 10px; max-width: 100%; max-height: 160px; border-radius: var(--radius-sm); display: none; }
+
+  .live-profit { display: flex; gap: 8px; margin: 4px 0 18px; flex-wrap: wrap; }
+
+  .list-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  .list-head h2 { margin: 0; }
+  .list-head input[type="text"] { font-size: 13.5px; padding: 7px 14px; border-radius: 999px; width: 200px; }
+
+  .record-list { display: flex; flex-direction: column; gap: 10px; }
+  .record-card {
+    display: flex; gap: 14px; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-sm);
+    background: var(--bg-elevated); box-shadow: var(--shadow); align-items: flex-start; flex-wrap: wrap;
+  }
+  .record-thumb {
+    width: 64px; height: 64px; border-radius: var(--radius-sm); object-fit: cover; flex-shrink: 0;
+    background: var(--bg); border: 1px solid var(--line);
+  }
+  .record-thumb.placeholder { display: flex; align-items: center; justify-content: center; color: var(--ink-soft); font-size: 22px; }
+  .record-main { flex: 1; min-width: 180px; }
+  .record-main .rm-top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  .record-main .rm-title { font-weight: 700; font-size: 14.5px; }
+  .record-main .rm-date { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-soft); }
+  .record-main .rm-sub { font-size: 12.5px; color: var(--ink-soft); margin-top: 3px; }
+  .record-main .rm-nums { display: flex; gap: 10px; margin-top: 8px; flex-wrap: wrap; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12.5px; }
+  .record-main .rm-note { font-size: 12.5px; color: var(--ink-soft); margin-top: 6px; }
+  .record-actions { flex-shrink: 0; }
+
+  .field-error { color: var(--bad); font-size: 12.5px; margin-top: 6px; display: none; }
+  .field-error.show { display: block; }
+</style>
+</head>
+<body>
+<div class="page">
+  <nav class="topnav">
+    <div class="brand">📦 代購賣場工具</div>
+    <div class="tabs">
+      <a href="/pricing.html">定價計算機</a>
+      <a href="/records.html" class="active">銷售紀錄</a>
+    </div>
+    <div class="right">
+      <a class="btn small" href="/api/export/excel">⬇ 匯出Excel備份</a>
+      <form method="POST" action="/logout" style="margin:0;">
+        <button type="submit" class="btn small">登出</button>
+      </form>
+    </div>
+  </nav>
+
+  <h1>銷售紀錄</h1>
+  <p class="sub">客人買了什麼、花多少成本、賣多少錢，一筆一筆記下來，自動幫你算利潤。存在雲端資料庫，也可以隨時按「匯出Excel備份」多留一份。</p>
+
+  <div class="stat-row" id="statRow">
+    <div class="stat-tile"><div class="st-label">總筆數</div><div class="st-value" id="statCount">0</div></div>
+    <div class="stat-tile"><div class="st-label">總淨利</div><div class="st-value" id="statProfit">NT$0</div></div>
+    <div class="stat-tile"><div class="st-label">平均每筆淨利</div><div class="st-value" id="statAvgProfit">NT$0</div></div>
+    <div class="stat-tile"><div class="st-label">平均淨利率</div><div class="st-value" id="statAvgMargin">0%</div></div>
+  </div>
+
+  <div class="layout">
+    <section class="panel form-panel">
+      <div class="panel-pad">
+        <h2>新增一筆紀錄</h2>
+        <form id="recordForm">
+          <div class="two-col">
+            <div class="field"><label>客人名稱</label><input type="text" id="customerName" placeholder="例如：阿美"></div>
+            <div class="field"><label>日期</label><input type="date" id="soldAt"></div>
+          </div>
+          <div class="field"><label>商品名稱</label><input type="text" id="itemName" placeholder="例如：貓咪造型卡套" required></div>
+          <div class="two-col">
+            <div class="field"><label>成本 NT$</label><input type="number" id="cost" min="0" step="1" placeholder="0"></div>
+            <div class="field"><label>售價 NT$</label><input type="number" id="soldPrice" min="0" step="1" placeholder="0"></div>
+          </div>
+          <div class="field"><label>給客人的運費 NT$<span class="hint">選填，不算進淨利</span></label><input type="number" id="shippingFee" min="0" step="1" placeholder="0"></div>
+
+          <div class="live-profit">
+            <span class="chip" id="livePofitChip">淨利 NT$0</span>
+            <span class="chip" id="liveMarginChip">淨利率 0%</span>
+          </div>
+
+          <div class="field">
+            <label>照片<span class="hint">選填</span></label>
+            <label class="photo-drop">
+              <input type="file" id="photoInput" accept="image/*">
+              <span class="ph-hint">點這裡選照片（png / jpg / webp / gif，最大 8MB）</span>
+            </label>
+            <img id="photoPreview" class="photo-preview" alt="預覽圖">
+          </div>
+
+          <div class="field"><label>備註<span class="hint">選填</span></label><textarea id="note" placeholder="例如：客人指定要粉紅色"></textarea></div>
+
+          <p class="field-error" id="formError"></p>
+
+          <button type="submit" class="btn primary" id="submitBtn">✚ 新增紀錄</button>
+        </form>
+      </div>
+    </section>
+
+    <section>
+      <div class="list-head">
+        <h2>紀錄列表<span class="count-badge" id="listCount">0</span></h2>
+        <input type="text" id="searchRecords" placeholder="搜尋客人或商品…">
+      </div>
+      <div class="record-list" id="recordList"><p class="empty-state">載入中…</p></div>
+    </section>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var allRecords = [];
+
+  $('soldAt').value = new Date().toISOString().slice(0, 10);
+
+  function fmt(n) { return Math.round(n || 0).toLocaleString('zh-Hant-TW'); }
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  var toastTimer;
+  function showToast(msg) {
+    var t = $('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.classList.remove('show'); }, 2000);
+  }
+
+  function updateLiveProfit() {
+    var cost = parseFloat($('cost').value) || 0;
+    var soldPrice = parseFloat($('soldPrice').value) || 0;
+    var profit = soldPrice - cost;
+    var margin = soldPrice > 0 ? (profit / soldPrice * 100) : 0;
+    var pChip = $('livePofitChip'), mChip = $('liveMarginChip');
+    pChip.textContent = '淨利 NT$' + fmt(profit);
+    mChip.textContent = '淨利率 ' + Math.round(margin) + '%';
+    var cls = 'good';
+    if (profit < 0) cls = 'bad'; else if (margin < 25) cls = 'warn';
+    pChip.className = 'chip ' + cls;
+    mChip.className = 'chip ' + cls;
+  }
+  $('cost').addEventListener('input', updateLiveProfit);
+  $('soldPrice').addEventListener('input', updateLiveProfit);
+  updateLiveProfit();
+
+  $('photoInput').addEventListener('change', function () {
+    var file = this.files[0];
+    var img = $('photoPreview');
+    if (!file) { img.style.display = 'none'; return; }
+    var reader = new FileReader();
+    reader.onload = function (e) { img.src = e.target.result; img.style.display = 'block'; };
+    reader.readAsDataURL(file);
+  });
+
+  function updateStats() {
+    var count = allRecords.length;
+    var totalProfit = allRecords.reduce(function (sum, r) { return sum + (Number(r.profit) || 0); }, 0);
+    var totalSoldPrice = allRecords.reduce(function (sum, r) { return sum + (Number(r.sold_price) || 0); }, 0);
+    var avgProfit = count > 0 ? totalProfit / count : 0;
+    var avgMargin = totalSoldPrice > 0 ? (totalProfit / totalSoldPrice * 100) : 0;
+    $('statCount').textContent = count;
+    $('statProfit').textContent = 'NT$' + fmt(totalProfit);
+    $('statAvgProfit').textContent = 'NT$' + fmt(avgProfit);
+    $('statAvgMargin').textContent = Math.round(avgMargin) + '%';
+  }
+
+  function renderList(filter) {
+    filter = (filter || '').trim().toLowerCase();
+    $('listCount').textContent = allRecords.length;
+    var items = filter
+      ? allRecords.filter(function (r) {
+          return (r.customer_name || '').toLowerCase().indexOf(filter) !== -1 ||
+                 (r.item_name || '').toLowerCase().indexOf(filter) !== -1;
+        })
+      : allRecords;
+
+    var listEl = $('recordList');
+    listEl.innerHTML = '';
+    if (items.length === 0) {
+      var msg = allRecords.length === 0 ? '還沒有任何銷售紀錄，左邊填一筆試試看。' : '找不到符合的紀錄。';
+      listEl.innerHTML = '<p class="empty-state">' + msg + '</p>';
+      return;
+    }
+
+    items.forEach(function (r) {
+      var card = document.createElement('div');
+      card.className = 'record-card';
+      var thumbHtml = r.photo_url
+        ? '<a href="' + escapeHtml(r.photo_url) + '" target="_blank" rel="noopener"><img class="record-thumb" src="' + escapeHtml(r.photo_url) + '" alt=""></a>'
+        : '<div class="record-thumb placeholder">🖼️</div>';
+      var cls = 'good';
+      if (r.profit < 0) cls = 'bad'; else if (r.sold_price > 0 && (r.profit / r.sold_price * 100) < 25) cls = 'warn';
+
+      card.innerHTML =
+        thumbHtml +
+        '<div class="record-main">' +
+          '<div class="rm-top"><span class="rm-title">' + escapeHtml(r.item_name || '未命名商品') + '</span><span class="rm-date">' + escapeHtml(r.sold_at) + '</span></div>' +
+          '<div class="rm-sub">' + (r.customer_name ? '客人：' + escapeHtml(r.customer_name) : '未填客人名稱') + '</div>' +
+          '<div class="rm-nums">' +
+            '<span>成本 NT$' + fmt(r.cost) + '</span>' +
+            '<span>售價 NT$' + fmt(r.sold_price) + '</span>' +
+            (r.shipping_fee ? '<span>運費 NT$' + fmt(r.shipping_fee) + '</span>' : '') +
+            '<span class="chip ' + cls + '">淨利 NT$' + fmt(r.profit) + '</span>' +
+          '</div>' +
+          (r.note ? '<div class="rm-note">' + escapeHtml(r.note) + '</div>' : '') +
+        '</div>' +
+        '<div class="record-actions"><button type="button" class="btn small ghost" data-action="delete">刪除</button></div>';
+
+      listEl.appendChild(card);
+      card.querySelector('[data-action="delete"]').addEventListener('click', async function () {
+        try {
+          var res = await fetch('/api/sales-records/' + r.id, { method: 'DELETE' });
+          if (!res.ok) throw new Error();
+          allRecords = allRecords.filter(function (x) { return x.id !== r.id; });
+          renderList($('searchRecords').value);
+          updateStats();
+          showToast('已刪除');
+        } catch (e) { showToast('刪除失敗，請再試一次'); }
+      });
+    });
+  }
+
+  $('searchRecords').addEventListener('input', function () { renderList(this.value); });
+
+  $('recordForm').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    var errEl = $('formError');
+    errEl.classList.remove('show');
+
+    if (!$('itemName').value.trim()) {
+      errEl.textContent = '商品名稱不能空白。';
+      errEl.classList.add('show');
+      return;
+    }
+
+    var fd = new FormData();
+    fd.append('customerName', $('customerName').value.trim());
+    fd.append('itemName', $('itemName').value.trim());
+    fd.append('cost', $('cost').value || '0');
+    fd.append('soldPrice', $('soldPrice').value || '0');
+    fd.append('shippingFee', $('shippingFee').value || '0');
+    fd.append('soldAt', $('soldAt').value || new Date().toISOString().slice(0, 10));
+    fd.append('note', $('note').value.trim());
+    if ($('photoInput').files[0]) fd.append('photo', $('photoInput').files[0]);
+
+    var btn = $('submitBtn');
+    btn.disabled = true;
+    try {
+      var res = await fetch('/api/sales-records', { method: 'POST', body: fd });
+      if (!res.ok) {
+        var errBody = await res.json().catch(function () { return {}; });
+        throw new Error(errBody.error || '新增失敗');
+      }
+      var saved = await res.json();
+      allRecords.unshift(saved);
+      renderList($('searchRecords').value);
+      updateStats();
+      showToast('已新增紀錄');
+
+      this.reset();
+      $('soldAt').value = new Date().toISOString().slice(0, 10);
+      $('photoPreview').style.display = 'none';
+      updateLiveProfit();
+    } catch (err) {
+      errEl.textContent = err.message || '新增失敗，請再試一次。';
+      errEl.classList.add('show');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  fetch('/api/sales-records').then(function (res) {
+    if (!res.ok) throw new Error();
+    return res.json();
+  }).then(function (data) {
+    allRecords = data;
+    renderList('');
+    updateStats();
+  }).catch(function () {
+    $('recordList').innerHTML = '<p class="empty-state">紀錄載入失敗，請重新整理頁面再試一次。</p>';
+  });
+})();
+</script>
+</body>
+</html>

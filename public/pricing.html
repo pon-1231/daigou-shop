@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>定價計算機 · 代購賣場工具</title>
+<link rel="stylesheet" href="/shared.css">
+<style>
+  .flow {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-soft); margin-bottom: 24px;
+  }
+  .flow .step {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--bg-elevated); border: 1px solid var(--line); border-radius: 999px;
+    padding: 6px 14px 6px 10px; box-shadow: var(--shadow);
+  }
+  .flow .step b { color: var(--ink); font-weight: 600; }
+  .flow .num {
+    width: 18px; height: 18px; border-radius: 50%; background: var(--accent); color: var(--accent-ink);
+    display: inline-flex; align-items: center; justify-content: center; font-size: 10.5px; font-weight: 700;
+  }
+  .flow .arrow { color: var(--line-strong); font-size: 14px; }
+
+  .layout { display: grid; grid-template-columns: 1fr 380px; gap: 22px; align-items: start; }
+  @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+
+  h3.group-title {
+    font-size: 12.5px; font-weight: 700; letter-spacing: 0.04em; color: var(--ink-soft);
+    text-transform: uppercase; margin: 0 0 12px; display: flex; align-items: center; gap: 6px;
+  }
+  .field-group { margin-bottom: 26px; }
+  .field-group:last-of-type { margin-bottom: 22px; }
+  .field-row {
+    display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px;
+    padding: 9px 0; border-bottom: 1px dashed var(--line);
+  }
+  .field-row:last-child { border-bottom: none; }
+  .field-row label { font-size: 14px; font-weight: 400; margin: 0; }
+  .field-row label .hint { display: block; font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
+  .field-input { display: flex; align-items: center; gap: 6px; }
+  .field-input .prefix { font-family: var(--font-mono); font-size: 13px; color: var(--ink-soft); }
+  .field-input input {
+    width: 108px; text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 15px;
+  }
+  .fx-input { width: 76px !important; }
+  .fx-reset { font-family: var(--font-mono); font-size: 11px; color: var(--accent); background: none; border: none; cursor: pointer; padding: 2px 4px; }
+  @media (hover: hover) { .fx-reset:hover { text-decoration: underline; } }
+  .note-line { font-size: 12px; color: var(--ink-soft); margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line); }
+
+  .product-name-row { margin-bottom: 22px; }
+  .product-name-row label .hint { display: block; font-size: 12px; color: var(--ink-soft); margin-top: 2px; font-weight: 400; }
+
+  .category-picker { margin-bottom: 22px; }
+  .cat-btns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+  .cat-btn { text-align: left; background: var(--bg); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); padding: 10px 12px; cursor: pointer; font-family: var(--font-body); }
+  .cat-btn .cat-name { display: block; font-size: 13.5px; font-weight: 700; color: var(--ink); }
+  .cat-btn .cat-range { display: block; font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-soft); margin-top: 3px; }
+  .cat-btn .cat-ex { display: block; font-size: 10.5px; color: var(--ink-soft); margin-top: 5px; line-height: 1.4; }
+  .cat-btn.active { background: var(--accent-soft); border-color: var(--accent); }
+  .cat-btn.active .cat-name { color: var(--accent); }
+
+  .slider-row { display: flex; align-items: center; gap: 12px; }
+  .slider-row input[type="range"] { flex: 1; accent-color: var(--accent); }
+  .slider-value { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 14px; font-weight: 700; color: var(--accent); width: 52px; text-align: right; }
+  .slider-range-labels { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-soft); margin-top: 4px; }
+
+  .manual-row { margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--line); }
+  .manual-row .lbl { font-size: 12.5px; color: var(--ink-soft); margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; font-weight: 400; }
+  .manual-row .lbl button { font-family: var(--font-mono); font-size: 11px; color: var(--accent); background: none; border: none; cursor: pointer; }
+  @media (hover: hover) { .manual-row .lbl button:hover { text-decoration: underline; } }
+  .manual-input { display: flex; align-items: center; gap: 6px; background: var(--bg); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); padding: 8px 12px; }
+  .manual-input span { font-family: var(--font-mono); color: var(--ink-soft); font-size: 14px; }
+  .manual-input input { border: none; background: none; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 16px; font-weight: 700; width: 100%; }
+  .manual-input input:focus { outline: none; }
+
+  .actions { display: flex; gap: 10px; padding-top: 4px; flex-wrap: wrap; }
+
+  .results-panel { position: sticky; top: 20px; overflow: hidden; }
+  .stripe {
+    height: 6px;
+    background: repeating-linear-gradient(135deg, var(--accent) 0px, var(--accent) 10px, var(--bg-elevated) 10px, var(--bg-elevated) 14px, var(--accent-2) 14px, var(--accent-2) 24px, var(--bg-elevated) 24px, var(--bg-elevated) 28px);
+  }
+  .results-pad { padding: 22px 24px 24px; }
+  .r-row { display: flex; justify-content: space-between; align-items: baseline; padding: 9px 0; border-bottom: 1px dashed var(--line); font-size: 14px; }
+  .r-row .r-num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 600; }
+  .r-formula { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-soft); display: block; margin-top: 1px; }
+
+  .final-block { margin: 18px 0 14px; padding: 16px; background: var(--accent-soft); border-radius: var(--radius-sm); text-align: center; }
+  .final-block .fb-label { font-size: 12px; color: var(--ink-soft); margin-bottom: 4px; }
+  .final-block .fb-value { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 34px; font-weight: 700; color: var(--accent); letter-spacing: -0.01em; }
+  .final-block .fb-value span { font-size: 18px; font-weight: 600; }
+  .chip-row { display: flex; gap: 8px; justify-content: center; margin-top: 10px; flex-wrap: wrap; }
+
+  .ship-block { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+  .ship-block .r-row:last-child { border-bottom: none; font-weight: 700; }
+  .ship-note { font-size: 11.5px; color: var(--ink-soft); margin-top: 8px; line-height: 1.5; }
+
+  details.formula { margin-top: 18px; font-size: 12.5px; color: var(--ink-soft); }
+  details.formula summary { cursor: pointer; font-weight: 600; color: var(--ink); outline: none; }
+  details.formula .formula-body { margin-top: 10px; padding: 12px 14px; background: var(--bg); border-radius: var(--radius-sm); font-family: var(--font-mono); line-height: 1.9; font-size: 11.5px; }
+
+  .saved-section { margin-top: 22px; }
+  .list-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  .list-head h2 { margin: 0; display: flex; align-items: center; }
+  .count-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; margin-left: 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 11px; font-family: var(--font-mono); font-weight: 700; }
+  .list-head input[type="text"] { font-size: 13.5px; padding: 7px 14px; border-radius: 999px; width: 200px; }
+
+  .saved-list { display: flex; flex-direction: column; gap: 8px; }
+  .saved-item { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--bg); flex-wrap: wrap; }
+  .si-name { font-size: 14px; font-weight: 600; display: flex; align-items: center; }
+  .si-cat-badge { font-size: 10.5px; padding: 2px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); margin-left: 8px; font-weight: 600; }
+  .si-sub { font-size: 12px; color: var(--ink-soft); margin-top: 4px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  .si-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+  footer.page-foot { margin-top: 30px; font-size: 12px; color: var(--ink-soft); text-align: center; }
+</style>
+</head>
+<body>
+<div class="page">
+  <nav class="topnav">
+    <div class="brand">📦 代購賣場工具</div>
+    <div class="tabs">
+      <a href="/pricing.html" class="active">定價計算機</a>
+      <a href="/records.html">銷售紀錄</a>
+    </div>
+    <div class="right">
+      <a class="btn small" href="/api/export/excel">⬇ 匯出Excel備份</a>
+      <form method="POST" action="/logout" style="margin:0;">
+        <button type="submit" class="btn small">登出</button>
+      </form>
+    </div>
+  </nav>
+
+  <h1>代購定價計算機</h1>
+  <p class="sub">把中國進貨成本、跨境運費、包材與手續費填進去，選一下商品類型，就能算出建議售價、每件淨利，還有給客人的運費要怎麼分開列。清單存在雲端資料庫，換裝置也看得到。</p>
+  <div class="flow">
+    <div class="step"><span class="num">1</span>中國成本</div>
+    <span class="arrow">→</span>
+    <div class="step"><span class="num">2</span>實際成本</div>
+    <span class="arrow">→</span>
+    <div class="step"><span class="num">3</span>建議售價</div>
+  </div>
+
+  <div class="layout">
+    <section class="panel">
+      <div class="panel-pad">
+        <h2>成本資料</h2>
+
+        <div class="product-name-row">
+          <label>商品名稱<span class="hint">選填，方便之後在清單裡搜尋類似商品</span></label>
+          <input type="text" id="productName" placeholder="例如：貓咪造型卡套">
+        </div>
+
+        <div class="field-group">
+          <h3 class="group-title">🇨🇳 中國端</h3>
+          <div class="field-row">
+            <label>商品人民幣價格<span class="hint">賣家標價，不含運費</span></label>
+            <div class="field-input"><span class="prefix">¥</span><input type="number" id="rmbPrice" inputmode="decimal" placeholder="0" min="0" step="0.01"></div>
+          </div>
+          <div class="field-row">
+            <label>中國境內運費<span class="hint">賣家寄到集運倉</span></label>
+            <div class="field-input"><span class="prefix">¥</span><input type="number" id="rmbShip" inputmode="decimal" placeholder="0" min="0" step="0.01"></div>
+          </div>
+          <div class="field-row">
+            <label>匯率<span class="hint">人民幣兌台幣</span></label>
+            <div class="field-input">
+              <input type="number" id="fxRate" class="fx-input" inputmode="decimal" min="0" step="0.01" value="4.5">
+              <button type="button" class="fx-reset" id="fxReset">預設4.5</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <h3 class="group-title">📦 跨境與包裝</h3>
+          <div class="field-row"><label>集運／跨境運費</label><div class="field-input"><span class="prefix">NT$</span><input type="number" id="crossShip" inputmode="decimal" placeholder="0" min="0" step="1"></div></div>
+          <div class="field-row"><label>包材</label><div class="field-input"><span class="prefix">NT$</span><input type="number" id="packaging" inputmode="decimal" placeholder="0" min="0" step="1"></div></div>
+          <div class="field-row"><label>金流／平台費</label><div class="field-input"><span class="prefix">NT$</span><input type="number" id="paymentFee" inputmode="decimal" placeholder="0" min="0" step="1"></div></div>
+        </div>
+
+        <div class="field-group">
+          <h3 class="group-title">🚚 給客人的運費</h3>
+          <div class="field-row">
+            <label>寄給客人的運費<span class="hint">代收代付，不算進商品利潤</span></label>
+            <div class="field-input"><span class="prefix">NT$</span><input type="number" id="domesticShip" inputmode="decimal" placeholder="0" min="0" step="1"></div>
+          </div>
+          <p class="note-line">這筆會單獨列在最下面給客人看，不會被拿去乘倍數算利潤——避免運費偷偷被算成「賺到的錢」。</p>
+        </div>
+
+        <div class="category-picker">
+          <h3 class="group-title">🏷️ 商品類型 → 倍數區間</h3>
+          <div class="cat-btns">
+            <button type="button" class="cat-btn" data-min="1.5" data-max="1.8" id="catSmall"><span class="cat-name">小額商品</span><span class="cat-range">1.5 × ~ 1.8 ×</span><span class="cat-ex">卡套／小吊飾／小貼紙／小配件</span></button>
+            <button type="button" class="cat-btn" data-min="1.4" data-max="1.6" id="catMid"><span class="cat-name">中價商品</span><span class="cat-range">1.4 × ~ 1.6 ×</span><span class="cat-ex">卡磚／娃衣／壓克力展示品</span></button>
+            <button type="button" class="cat-btn" data-min="1.25" data-max="1.5" id="catHigh"><span class="cat-name">高價商品</span><span class="cat-range">1.25 × ~ 1.5 ×</span><span class="cat-ex">大型展示品／收藏用品</span></button>
+          </div>
+          <div class="slider-row">
+            <input type="range" id="multiplierSlider" min="1.4" max="1.6" step="0.01" value="1.5">
+            <span class="slider-value" id="sliderValueLabel">1.50×</span>
+          </div>
+          <div class="slider-range-labels"><span id="sliderMinLabel">1.40×</span><span id="sliderMaxLabel">1.60×</span></div>
+
+          <div class="manual-row">
+            <div class="lbl"><span>或直接輸入想賣的價格</span><button type="button" id="resetManual">重設為建議售價</button></div>
+            <div class="manual-input"><span>NT$</span><input type="number" id="manualPrice" inputmode="decimal" placeholder="留空 = 用上面倍數計算"></div>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button type="button" class="btn primary" id="saveItem">💾 加入清單</button>
+          <button type="button" class="btn" id="fillExample">填入範例數值</button>
+          <button type="button" class="btn" id="resetAll">清空重填</button>
+        </div>
+      </div>
+    </section>
+
+    <aside class="panel results-panel">
+      <div class="stripe"></div>
+      <div class="results-pad">
+        <h2>計算結果</h2>
+        <div class="r-row"><div>① 中國成本<span class="r-formula" id="chinaCostFormula">(¥0 + ¥0) × 4.5</span></div><span class="r-num" id="chinaCost">NT$0</span></div>
+        <div class="r-row"><div>② 實際成本<span class="r-formula">中國成本 + 跨境運費 + 包材 + 金流費</span></div><span class="r-num" id="actualCost">NT$0</span></div>
+
+        <div class="final-block">
+          <div class="fb-label">③ 商品建議售價</div>
+          <div class="fb-value"><span>NT$</span><span id="finalPrice">0</span></div>
+          <div class="chip-row"><span class="chip" id="marginChip">淨利率 0%</span><span class="chip" id="profitChip">淨利 NT$0</span></div>
+        </div>
+
+        <div class="ship-block">
+          <div class="r-row"><div>🚚 給客人的運費<span class="r-formula">獨立列出，不影響利潤</span></div><span class="r-num" id="shipOut">NT$0</span></div>
+          <div class="r-row"><div>客人總支付</div><span class="r-num" id="totalPay">NT$0</span></div>
+          <p class="ship-note" id="breakevenNote">實際成本 NT$0 —— 售價低於這個數字就會虧本。</p>
+        </div>
+
+        <details class="formula">
+          <summary>公式怎麼算的？</summary>
+          <div class="formula-body">
+            ① 中國成本 ＝（商品人民幣＋境內運費）× 匯率<br>
+            ② 實際成本 ＝ 中國成本＋跨境運費＋包材＋金流費<br>
+            ③ 建議售價 ＝ 實際成本 × 類型倍數<br>
+            客人總支付 ＝ 建議售價＋給客人的運費
+          </div>
+        </details>
+      </div>
+    </aside>
+  </div>
+
+  <section class="panel saved-section">
+    <div class="panel-pad">
+      <div class="list-head">
+        <h2>已儲存的商品<span class="count-badge" id="savedCount">0</span></h2>
+        <input type="text" id="searchSaved" placeholder="搜尋商品名稱…">
+      </div>
+      <div class="saved-list" id="savedList"><p class="empty-state">載入中…</p></div>
+    </div>
+  </section>
+
+  <footer class="page-foot">數字僅供估算，正式開賣前請再確認實際運費與平台抽成。清單存在雲端資料庫，換裝置也看得到。</footer>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var fields = ['rmbPrice','rmbShip','fxRate','crossShip','packaging','paymentFee','domesticShip'];
+  var slider = $('multiplierSlider');
+  var manualPrice = $('manualPrice');
+  var catDefs = [
+    { el: $('catSmall'), key: 'small', label: '小額' },
+    { el: $('catMid'), key: 'mid', label: '中價' },
+    { el: $('catHigh'), key: 'high', label: '高價' }
+  ];
+  var currentCategory = null;
+  var lastState = { chinaCost: 0, actualCost: 0, finalPrice: 0, profit: 0, margin: 0 };
+  var allSavedItems = [];
+
+  var savedFx = null;
+  try { savedFx = localStorage.getItem('daigou_fx_rate'); } catch (e) {}
+  if (savedFx) { $('fxRate').value = savedFx; }
+
+  function num(id) { var v = parseFloat($(id).value); return isNaN(v) ? 0 : v; }
+  function fmt(n) { return Math.round(n).toLocaleString('zh-Hant-TW'); }
+  function fmt2(n) { return (Math.round(n * 100) / 100).toLocaleString('zh-Hant-TW', { minimumFractionDigits: 0, maximumFractionDigits: 2 }); }
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  var toastTimer;
+  function showToast(msg) {
+    var t = $('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.classList.remove('show'); }, 2000);
+  }
+
+  function setCategory(def, keepMultiplier) {
+    catDefs.forEach(function (d) { d.el.classList.remove('active'); });
+    def.el.classList.add('active');
+    currentCategory = def;
+    var min = parseFloat(def.el.dataset.min);
+    var max = parseFloat(def.el.dataset.max);
+    slider.min = min; slider.max = max;
+    if (!keepMultiplier) { slider.value = ((min + max) / 2).toFixed(2); }
+    $('sliderMinLabel').textContent = min.toFixed(2) + '×';
+    $('sliderMaxLabel').textContent = max.toFixed(2) + '×';
+    recalc();
+  }
+  catDefs.forEach(function (def) { def.el.addEventListener('click', function () { setCategory(def); }); });
+
+  function recalc() {
+    var rmbPrice = num('rmbPrice'), rmbShip = num('rmbShip'), fx = num('fxRate') || 0;
+    var chinaCost = (rmbPrice + rmbShip) * fx;
+    var crossShip = num('crossShip'), packaging = num('packaging'), paymentFee = num('paymentFee');
+    var actualCost = chinaCost + crossShip + packaging + paymentFee;
+    var domesticShip = num('domesticShip');
+    var multiplier = parseFloat(slider.value) || 0;
+    var sliderPrice = Math.round(actualCost * multiplier);
+    var manualVal = manualPrice.value.trim();
+    var overrideActive = manualVal !== '';
+    var finalPrice = overrideActive ? (parseFloat(manualVal) || 0) : sliderPrice;
+    var profit = finalPrice - actualCost;
+    var margin = finalPrice > 0 ? (profit / finalPrice * 100) : 0;
+    var totalPay = finalPrice + domesticShip;
+
+    $('chinaCostFormula').textContent = '(¥' + fmt2(rmbPrice) + ' + ¥' + fmt2(rmbShip) + ') × ' + fmt2(fx);
+    $('chinaCost').textContent = 'NT$' + fmt(chinaCost);
+    $('actualCost').textContent = 'NT$' + fmt(actualCost);
+    $('sliderValueLabel').textContent = multiplier.toFixed(2) + '×';
+    $('finalPrice').textContent = fmt(overrideActive ? finalPrice : sliderPrice);
+    $('shipOut').textContent = 'NT$' + fmt(domesticShip);
+    $('totalPay').textContent = 'NT$' + fmt(totalPay);
+    $('breakevenNote').textContent = '實際成本 NT$' + fmt(actualCost) + ' —— 售價低於這個數字就會虧本。';
+
+    var marginChip = $('marginChip'), profitChip = $('profitChip');
+    marginChip.textContent = '淨利率 ' + Math.round(margin) + '%';
+    profitChip.textContent = '淨利 NT$' + fmt(profit);
+    var cls = 'good';
+    if (profit < 0) cls = 'bad'; else if (margin < 25) cls = 'warn';
+    marginChip.className = 'chip ' + cls;
+    profitChip.className = 'chip ' + cls;
+
+    lastState = { chinaCost: chinaCost, actualCost: actualCost, finalPrice: overrideActive ? finalPrice : sliderPrice, profit: profit, margin: margin };
+  }
+
+  async function fetchSaved() {
+    var res = await fetch('/api/priced-items');
+    if (!res.ok) throw new Error('讀取清單失敗');
+    return res.json();
+  }
+
+  function renderSavedList(filter) {
+    filter = (filter || '').trim().toLowerCase();
+    $('savedCount').textContent = allSavedItems.length;
+    var items = filter ? allSavedItems.filter(function (it) { return (it.name || '').toLowerCase().indexOf(filter) !== -1; }) : allSavedItems;
+
+    var listEl = $('savedList');
+    listEl.innerHTML = '';
+    if (items.length === 0) {
+      var msg = allSavedItems.length === 0 ? '還沒有儲存任何商品，算完後按「加入清單」試試看。' : '找不到符合的商品。';
+      listEl.innerHTML = '<p class="empty-state">' + msg + '</p>';
+      return;
+    }
+
+    items.forEach(function (it) {
+      var row = document.createElement('div');
+      row.className = 'saved-item';
+      var dateStr = new Date(it.created_at).toLocaleDateString('zh-Hant-TW');
+      row.innerHTML =
+        '<div class="si-main">' +
+          '<div class="si-name">' + escapeHtml(it.name || '未命名商品') + '<span class="si-cat-badge">' + escapeHtml(it.category_label) + '</span></div>' +
+          '<div class="si-sub">實際成本 NT$' + fmt(it.actual_cost) + ' → 售價 NT$' + fmt(it.final_price) + ' · 淨利率 ' + Math.round(it.margin) + '% · ' + dateStr + '</div>' +
+        '</div>' +
+        '<div class="si-actions">' +
+          '<button type="button" class="btn small" data-action="apply">套用</button>' +
+          '<button type="button" class="btn small ghost" data-action="delete">刪除</button>' +
+        '</div>';
+      listEl.appendChild(row);
+
+      row.querySelector('[data-action="apply"]').addEventListener('click', function () { applyItem(it); });
+      row.querySelector('[data-action="delete"]').addEventListener('click', async function () {
+        try {
+          var res = await fetch('/api/priced-items/' + it.id, { method: 'DELETE' });
+          if (!res.ok) throw new Error();
+          allSavedItems = allSavedItems.filter(function (x) { return x.id !== it.id; });
+          renderSavedList($('searchSaved').value);
+          showToast('已刪除');
+        } catch (e) { showToast('刪除失敗，請再試一次'); }
+      });
+    });
+  }
+
+  function applyItem(it) {
+    $('productName').value = it.name || '';
+    $('rmbPrice').value = it.rmb_price;
+    $('rmbShip').value = it.rmb_ship;
+    $('fxRate').value = it.fx_rate;
+    $('crossShip').value = it.cross_ship;
+    $('packaging').value = it.packaging;
+    $('paymentFee').value = it.payment_fee;
+    $('domesticShip').value = it.domestic_ship;
+    manualPrice.value = it.manual_price == null ? '' : it.manual_price;
+    var def = catDefs.filter(function (d) { return d.key === it.category_key; })[0];
+    if (def) { setCategory(def, true); slider.value = it.multiplier; }
+    recalc();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  fields.forEach(function (id) {
+    $(id).addEventListener('input', function () {
+      if (id === 'fxRate') { try { localStorage.setItem('daigou_fx_rate', $(id).value); } catch (e) {} }
+      recalc();
+    });
+  });
+  slider.addEventListener('input', recalc);
+  manualPrice.addEventListener('input', recalc);
+
+  $('resetManual').addEventListener('click', function () { manualPrice.value = ''; recalc(); });
+  $('fxReset').addEventListener('click', function () {
+    $('fxRate').value = '4.5';
+    try { localStorage.setItem('daigou_fx_rate', '4.5'); } catch (e) {}
+    recalc();
+  });
+
+  $('fillExample').addEventListener('click', function () {
+    $('productName').value = '範例商品';
+    $('rmbPrice').value = 20; $('rmbShip').value = 0; $('fxRate').value = 4.5;
+    $('crossShip').value = 15; $('packaging').value = 5; $('paymentFee').value = 10; $('domesticShip').value = 60;
+    manualPrice.value = '';
+    setCategory(catDefs[1]);
+  });
+
+  $('resetAll').addEventListener('click', function () {
+    fields.forEach(function (id) { $(id).value = ''; });
+    $('fxRate').value = 4.5;
+    $('productName').value = '';
+    manualPrice.value = '';
+    currentCategory = null;
+    catDefs.forEach(function (d) { d.el.classList.remove('active'); });
+    slider.min = 1.4; slider.max = 1.6; slider.value = 1.5;
+    $('sliderMinLabel').textContent = '1.40×'; $('sliderMaxLabel').textContent = '1.60×';
+    recalc();
+  });
+
+  $('saveItem').addEventListener('click', async function () {
+    var payload = {
+      name: $('productName').value.trim(),
+      categoryKey: currentCategory ? currentCategory.key : '',
+      categoryLabel: currentCategory ? currentCategory.label : '未分類',
+      rmbPrice: num('rmbPrice'), rmbShip: num('rmbShip'), fxRate: num('fxRate'),
+      crossShip: num('crossShip'), packaging: num('packaging'), paymentFee: num('paymentFee'),
+      domesticShip: num('domesticShip'),
+      multiplier: parseFloat(slider.value) || 0,
+      manualPrice: manualPrice.value.trim(),
+      chinaCost: lastState.chinaCost, actualCost: lastState.actualCost, finalPrice: lastState.finalPrice,
+      profit: lastState.profit, margin: lastState.margin
+    };
+    var btn = $('saveItem');
+    var original = btn.textContent;
+    btn.disabled = true;
+    try {
+      var res = await fetch('/api/priced-items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error();
+      var saved = await res.json();
+      allSavedItems.unshift(saved);
+      renderSavedList($('searchSaved').value);
+      showToast('已加入清單');
+    } catch (e) {
+      showToast('儲存失敗，請檢查網路後再試一次');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = original;
+    }
+  });
+
+  $('searchSaved').addEventListener('input', function () { renderSavedList(this.value); });
+
+  recalc();
+  fetchSaved().then(function (items) {
+    allSavedItems = items;
+    renderSavedList('');
+  }).catch(function () {
+    $('savedList').innerHTML = '<p class="empty-state">清單載入失敗，請重新整理頁面再試一次。</p>';
+  });
+})();
+</script>
+</body>
+</html>

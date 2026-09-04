@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>登入 · 代購賣場工具</title>
+<link rel="stylesheet" href="/shared.css">
+<style>
+  body { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  .login-card { width: 100%; max-width: 340px; margin: 20px; }
+  .login-card h1 { text-align: center; font-size: 22px; }
+  .login-card .sub { text-align: center; margin: 0 auto 24px; }
+  .login-card form { display: flex; flex-direction: column; gap: 14px; }
+  .login-card .btn { justify-content: center; }
+  .error-msg { color: var(--bad); font-size: 13px; text-align: center; margin: -6px 0 4px; display: none; }
+  .error-msg.show { display: block; }
+</style>
+</head>
+<body>
+  <div class="panel login-card">
+    <div class="panel-pad">
+      <h1>代購賣場工具</h1>
+      <p class="sub">輸入密碼繼續</p>
+      <p class="error-msg" id="errorMsg">密碼不對，再試一次。</p>
+      <form method="POST" action="/login">
+        <div class="field">
+          <label for="password">密碼</label>
+          <input type="password" id="password" name="password" autofocus required>
+        </div>
+        <button type="submit" class="btn primary">登入</button>
+      </form>
+    </div>
+  </div>
+  <script>
+    if (new URLSearchParams(location.search).get('error')) {
+      document.getElementById('errorMsg').classList.add('show');
+    }
+  </script>
+</body>
+</html>

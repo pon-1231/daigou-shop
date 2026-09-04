@@ -1,0 +1,20 @@
+{
+  "name": "daigou-shop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "跨境代購定價與銷售紀錄小工具",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
+    "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
+    "express": "^4.21.0",
+    "express-session": "^1.18.0",
+    "multer": "^2.0.1"
+  }
+}
