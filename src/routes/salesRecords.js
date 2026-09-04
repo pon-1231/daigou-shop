@@ -3,6 +3,8 @@ const multer = require('multer');
 const router = express.Router();
 const supabase = require('../supabaseClient');
 
+const ORDER_STATUSES = ['待付款', '已付款', '已出貨', '已完成'];
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 8 * 1024 * 1024 },
@@ -49,6 +51,7 @@ router.post('/', (req, res) => {
       const cost = Number(body.cost) || 0;
       const soldPrice = Number(body.soldPrice) || 0;
       const shippingFee = Number(body.shippingFee) || 0;
+      const orderStatus = ORDER_STATUSES.includes(body.orderStatus) ? body.orderStatus : ORDER_STATUSES[0];
 
       const row = {
         customer_name: String(body.customerName || '').slice(0, 200),
@@ -59,6 +62,7 @@ router.post('/', (req, res) => {
         shipping_fee: shippingFee,
         profit: soldPrice - cost,
         note: String(body.note || '').slice(0, 1000),
+        order_status: orderStatus,
         sold_at: body.soldAt || new Date().toISOString().slice(0, 10)
       };
 
@@ -69,6 +73,22 @@ router.post('/', (req, res) => {
       res.status(500).json({ error: err.message });
     }
   });
+});
+
+router.patch('/:id', async (req, res) => {
+  if (!supabase) return res.status(500).json({ error: 'Supabase 尚未設定' });
+  const { orderStatus } = req.body || {};
+  if (!ORDER_STATUSES.includes(orderStatus)) {
+    return res.status(400).json({ error: '訂單狀態不合法' });
+  }
+  const { data, error } = await supabase
+    .from('sales_records')
+    .update({ order_status: orderStatus })
+    .eq('id', req.params.id)
+    .select()
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
 });
 
 router.delete('/:id', async (req, res) => {

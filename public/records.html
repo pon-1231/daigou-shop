@@ -52,6 +52,30 @@
 
   .field-error { color: var(--bad); font-size: 12.5px; margin-top: 6px; display: none; }
   .field-error.show { display: block; }
+
+  .chip.info { background: var(--accent-soft); color: var(--accent); }
+  .status-select {
+    font-family: var(--font-body); font-size: 11.5px; font-weight: 600;
+    padding: 3px 8px; border-radius: 999px; border: none; cursor: pointer;
+  }
+  .status-select.s-待付款 { background: var(--warn-soft); color: var(--warn); }
+  .status-select.s-已付款, .status-select.s-已出貨 { background: var(--accent-soft); color: var(--accent); }
+  .status-select.s-已完成 { background: var(--good-soft); color: var(--good); }
+
+  .product-breakdown { margin-bottom: 22px; }
+  .product-breakdown summary {
+    cursor: pointer; font-weight: 700; font-size: 14px; padding: 4px 0; outline: none;
+    display: flex; align-items: center;
+  }
+  .pb-table { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+  .pb-row {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+    padding: 9px 12px; background: var(--bg-elevated); border: 1px solid var(--line); border-radius: var(--radius-sm);
+    font-size: 13px;
+  }
+  .pb-row .pb-name { font-weight: 600; }
+  .pb-row .pb-sub { font-size: 11.5px; color: var(--ink-soft); font-family: var(--font-mono); }
+  .pb-row .pb-profit { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 700; }
 </style>
 </head>
 <body>
@@ -80,6 +104,11 @@
     <div class="stat-tile"><div class="st-label">平均淨利率</div><div class="st-value" id="statAvgMargin">0%</div></div>
   </div>
 
+  <details class="product-breakdown" id="productBreakdown" open>
+    <summary>各商品總計<span class="count-badge" id="productBreakdownCount">0</span></summary>
+    <div class="pb-table" id="productBreakdownTable"><p class="empty-state">還沒有資料。</p></div>
+  </details>
+
   <div class="layout">
     <section class="panel form-panel">
       <div class="panel-pad">
@@ -88,6 +117,19 @@
           <div class="two-col">
             <div class="field"><label>客人名稱</label><input type="text" id="customerName" placeholder="例如：阿美"></div>
             <div class="field"><label>日期</label><input type="date" id="soldAt"></div>
+          </div>
+          <div class="field">
+            <label>訂單狀態</label>
+            <select id="orderStatus">
+              <option value="待付款">待付款</option>
+              <option value="已付款">已付款</option>
+              <option value="已出貨">已出貨</option>
+              <option value="已完成">已完成</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>快速選商品<span class="hint">選了會自動帶入下面的商品名稱／成本／售價／運費，選完還是可以改</span></label>
+            <select id="productSelect"><option value="">— 不使用，自己填 —</option></select>
           </div>
           <div class="field"><label>商品名稱</label><input type="text" id="itemName" placeholder="例如：貓咪造型卡套" required></div>
           <div class="two-col">
@@ -135,6 +177,8 @@
 (function () {
   var $ = function (id) { return document.getElementById(id); };
   var allRecords = [];
+  var allProducts = [];
+  var ORDER_STATUSES = ['待付款', '已付款', '已出貨', '已完成'];
 
   $('soldAt').value = new Date().toISOString().slice(0, 10);
 
@@ -171,6 +215,30 @@
   $('soldPrice').addEventListener('input', updateLiveProfit);
   updateLiveProfit();
 
+  $('productSelect').addEventListener('change', function () {
+    var product = allProducts.filter(function (p) { return p.id === this.value; }, this)[0];
+    if (!product) return;
+    $('itemName').value = product.name || '';
+    $('cost').value = Math.round(product.actual_cost || 0);
+    $('soldPrice').value = Math.round(product.final_price || 0);
+    $('shippingFee').value = Math.round(product.domestic_ship || 0);
+    updateLiveProfit();
+  });
+
+  fetch('/api/priced-items').then(function (res) {
+    if (!res.ok) throw new Error();
+    return res.json();
+  }).then(function (products) {
+    allProducts = products;
+    var sel = $('productSelect');
+    products.forEach(function (p) {
+      var opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = (p.name || '未命名商品') + '（' + p.category_label + '，售價 NT$' + Math.round(p.final_price) + '）';
+      sel.appendChild(opt);
+    });
+  }).catch(function () { /* 商品清單抓不到就只能手動填，不擋主流程 */ });
+
   $('photoInput').addEventListener('change', function () {
     var file = this.files[0];
     var img = $('photoPreview');
@@ -190,6 +258,36 @@
     $('statProfit').textContent = 'NT$' + fmt(totalProfit);
     $('statAvgProfit').textContent = 'NT$' + fmt(avgProfit);
     $('statAvgMargin').textContent = Math.round(avgMargin) + '%';
+
+    renderProductBreakdown();
+  }
+
+  function renderProductBreakdown() {
+    var byProduct = {};
+    allRecords.forEach(function (r) {
+      var name = r.item_name || '未命名商品';
+      if (!byProduct[name]) byProduct[name] = { name: name, count: 0, profit: 0 };
+      byProduct[name].count += 1;
+      byProduct[name].profit += Number(r.profit) || 0;
+    });
+    var rows = Object.keys(byProduct).map(function (k) { return byProduct[k]; });
+    rows.sort(function (a, b) { return b.profit - a.profit; });
+
+    $('productBreakdownCount').textContent = rows.length;
+    var el = $('productBreakdownTable');
+    el.innerHTML = '';
+    if (rows.length === 0) {
+      el.innerHTML = '<p class="empty-state">還沒有資料。</p>';
+      return;
+    }
+    rows.forEach(function (r) {
+      var row = document.createElement('div');
+      row.className = 'pb-row';
+      row.innerHTML =
+        '<div><div class="pb-name">' + escapeHtml(r.name) + '</div><div class="pb-sub">賣了 ' + r.count + ' 筆</div></div>' +
+        '<div class="pb-profit">NT$' + fmt(r.profit) + '</div>';
+      el.appendChild(row);
+    });
   }
 
   function renderList(filter) {
@@ -219,11 +317,18 @@
       var cls = 'good';
       if (r.profit < 0) cls = 'bad'; else if (r.sold_price > 0 && (r.profit / r.sold_price * 100) < 25) cls = 'warn';
 
+      var status = ORDER_STATUSES.indexOf(r.order_status) !== -1 ? r.order_status : ORDER_STATUSES[0];
+      var statusOptions = ORDER_STATUSES.map(function (s) {
+        return '<option value="' + s + '"' + (s === status ? ' selected' : '') + '>' + s + '</option>';
+      }).join('');
+
       card.innerHTML =
         thumbHtml +
         '<div class="record-main">' +
           '<div class="rm-top"><span class="rm-title">' + escapeHtml(r.item_name || '未命名商品') + '</span><span class="rm-date">' + escapeHtml(r.sold_at) + '</span></div>' +
-          '<div class="rm-sub">' + (r.customer_name ? '客人：' + escapeHtml(r.customer_name) : '未填客人名稱') + '</div>' +
+          '<div class="rm-sub">' + (r.customer_name ? '客人：' + escapeHtml(r.customer_name) : '未填客人名稱') +
+            ' · <select class="status-select s-' + status + '" data-action="status">' + statusOptions + '</select>' +
+          '</div>' +
           '<div class="rm-nums">' +
             '<span>成本 NT$' + fmt(r.cost) + '</span>' +
             '<span>售價 NT$' + fmt(r.sold_price) + '</span>' +
@@ -244,6 +349,27 @@
           updateStats();
           showToast('已刪除');
         } catch (e) { showToast('刪除失敗，請再試一次'); }
+      });
+
+      var statusSelect = card.querySelector('[data-action="status"]');
+      statusSelect.addEventListener('change', async function () {
+        var newStatus = this.value;
+        var prevClass = statusSelect.className;
+        try {
+          var res = await fetch('/api/sales-records/' + r.id, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderStatus: newStatus })
+          });
+          if (!res.ok) throw new Error();
+          r.order_status = newStatus;
+          statusSelect.className = 'status-select s-' + newStatus;
+          showToast('狀態已更新');
+        } catch (e) {
+          statusSelect.className = prevClass;
+          statusSelect.value = status;
+          showToast('更新失敗，請再試一次');
+        }
       });
     });
   }
@@ -269,6 +395,7 @@
     fd.append('shippingFee', $('shippingFee').value || '0');
     fd.append('soldAt', $('soldAt').value || new Date().toISOString().slice(0, 10));
     fd.append('note', $('note').value.trim());
+    fd.append('orderStatus', $('orderStatus').value);
     if ($('photoInput').files[0]) fd.append('photo', $('photoInput').files[0]);
 
     var btn = $('submitBtn');

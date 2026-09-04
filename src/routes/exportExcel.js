@@ -48,6 +48,7 @@ router.get('/excel', async (req, res) => {
       { header: '日期', key: 'sold_at', width: 12 },
       { header: '客人', key: 'customer_name', width: 16 },
       { header: '商品', key: 'item_name', width: 22 },
+      { header: '訂單狀態', key: 'order_status', width: 12 },
       { header: '成本', key: 'cost', width: 10 },
       { header: '售價', key: 'sold_price', width: 10 },
       { header: '給客人運費', key: 'shipping_fee', width: 12 },
