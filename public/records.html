@@ -79,6 +79,19 @@
     display: block; margin-top: 8px; font-family: var(--font-mono); font-size: 11px; color: var(--accent);
     background: none; border: none; cursor: pointer; text-decoration: underline;
   }
+  .size-picker .sp-add-toggle {
+    display: block; font-family: var(--font-mono); font-size: 11.5px; color: var(--accent);
+    background: none; border: none; cursor: pointer; padding: 0;
+  }
+  .size-picker .sp-add-form { display: grid; grid-template-columns: 1fr 0.8fr 0.8fr auto; gap: 6px; margin-top: 8px; }
+  .size-picker .sp-add-form input {
+    font-size: 12.5px; padding: 6px 8px; border-radius: var(--radius-sm); border: 1px solid var(--line-strong); width: 100%;
+  }
+  .size-picker .sp-add-form button {
+    font-family: var(--font-body); font-size: 12.5px; padding: 6px 12px; border-radius: var(--radius-sm);
+    border: none; background: var(--accent); color: var(--accent-ink); cursor: pointer;
+  }
+  @media (max-width: 480px) { .size-picker .sp-add-form { grid-template-columns: 1fr 1fr; } }
 
   .manual-add-row { display: grid; grid-template-columns: 1.6fr 0.8fr 0.8fr 0.8fr auto; gap: 6px; }
   .manual-add-row input {
@@ -135,10 +148,18 @@
   .pb-row .pb-name { font-weight: 600; }
   .pb-row .pb-sub { font-size: 11.5px; color: var(--ink-soft); font-family: var(--font-mono); }
   .pb-row .pb-profit { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 700; }
+  .pb-row.expandable { cursor: pointer; }
+  .pb-chevron { display: inline-block; width: 14px; color: var(--ink-soft); font-size: 11px; }
+  .pb-detail { margin: 4px 0 0 12px; padding: 6px 0 2px 12px; border-left: 2px solid var(--line); display: flex; flex-direction: column; gap: 4px; }
+  .pb-size-row {
+    display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-soft);
+    font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+  }
 
   .period-row { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
   .period-row label { font-size: 13px; font-weight: 600; margin: 0; }
   .period-row select { font-size: 13.5px; padding: 7px 12px; border-radius: var(--radius-sm); border: 1px solid var(--line-strong); background: var(--bg-elevated); }
+  .period-row input[type="date"] { font-size: 13.5px; padding: 6px 10px; border-radius: var(--radius-sm); border: 1px solid var(--line-strong); background: var(--bg-elevated); }
 
   /* ---------- Order list ---------- */
   .order-list {
@@ -170,6 +191,7 @@
   .status-select.s-待處理 { background: var(--warn-soft); color: var(--warn); }
   .status-select.s-已下貨, .status-select.s-已出貨 { background: var(--accent-soft); color: var(--accent); }
   .status-select.s-已完成 { background: var(--good-soft); color: var(--good); }
+  .status-updated-note { font-size: 11px; color: var(--ink-soft); font-family: var(--font-mono); }
   .ship-by-note { font-size: 11.5px; color: var(--ink-soft); font-family: var(--font-mono); }
   .ship-by-note.overdue { color: var(--bad); font-weight: 700; }
   .ship-by-note input { border: none; background: none; font: inherit; color: inherit; }
@@ -218,7 +240,11 @@
       <option value="last-month">上個月</option>
       <option value="this-year">今年</option>
       <option value="last-year">去年</option>
+      <option value="custom">自訂區間</option>
     </select>
+    <span id="customRangeRow" style="display:none;">
+      <input type="date" id="customRangeStart"> ～ <input type="date" id="customRangeEnd">
+    </span>
   </div>
 
   <div class="stat-row" id="statRow">
@@ -270,6 +296,13 @@
             <div class="size-picker" id="sizePicker" style="display:none;">
               <div class="sp-title">「<span id="spItemName"></span>」選尺寸</div>
               <div class="sp-quick" id="spVariants"></div>
+              <button type="button" id="spAddSizeToggle" class="sp-add-toggle">+ 新增其他尺寸</button>
+              <div class="sp-add-form" id="spAddForm" style="display:none;">
+                <input type="text" id="spNewSize" placeholder="尺寸">
+                <input type="number" id="spNewCost" placeholder="成本" min="0" step="1">
+                <input type="number" id="spNewPrice" placeholder="售價" min="0" step="1">
+                <button type="button" id="spNewAdd">加入</button>
+              </div>
               <button type="button" id="spCancel" class="sp-cancel">✕ 取消</button>
             </div>
           </div>
@@ -362,6 +395,11 @@
   }
   function pad2(n) { return String(n).padStart(2, '0'); }
   function ymd(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+  function formatDateTime(iso) {
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('zh-Hant-TW') + ' ' + d.toLocaleTimeString('zh-Hant-TW', { hour: '2-digit', minute: '2-digit' });
+  }
 
   var toastTimer;
   function showToast(msg) {
@@ -455,7 +493,12 @@
 
   $('productSearch').addEventListener('input', renderGallery);
 
+  var currentPickerName = null;
+  var currentPickerTemplate = null;
+
   function openSizePicker(name, options) {
+    currentPickerName = name;
+    currentPickerTemplate = options[0] ? options[0].product : null;
     $('spItemName').textContent = name;
     var el = $('spVariants');
     el.innerHTML = '';
@@ -469,13 +512,66 @@
       });
       el.appendChild(btn);
     });
+    $('spAddForm').style.display = 'none';
+    $('spNewSize').value = ''; $('spNewCost').value = ''; $('spNewPrice').value = '';
     $('sizePicker').style.display = '';
     $('sizePicker').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
   function closeSizePicker() {
     $('sizePicker').style.display = 'none';
+    currentPickerName = null;
+    currentPickerTemplate = null;
   }
+
+  $('spAddSizeToggle').addEventListener('click', function () {
+    var form = $('spAddForm');
+    form.style.display = (form.style.display === 'none') ? 'grid' : 'none';
+  });
+
+  $('spNewAdd').addEventListener('click', async function () {
+    var size = $('spNewSize').value.trim();
+    var cost = Number($('spNewCost').value) || 0;
+    var price = Number($('spNewPrice').value) || 0;
+    if (!size) { showToast('請先輸入尺寸'); return; }
+    if (!currentPickerName) return;
+
+    var tpl = currentPickerTemplate || {};
+    var margin = price > 0 ? ((price - cost) / price * 100) : 0;
+    var payload = {
+      name: currentPickerName,
+      sizes: size,
+      categoryKey: tpl.category_key || '',
+      categoryLabel: tpl.category_label || '未分類',
+      rmbPrice: 0, rmbShip: 0, fxRate: 4.5,
+      crossShip: 0, packaging: 0, paymentFee: 0,
+      domesticShip: tpl.domestic_ship || 0,
+      multiplier: 0, manualPrice: price,
+      chinaCost: 0, actualCost: cost, finalPrice: price,
+      profit: price - cost, margin: margin,
+      photoUrl: tpl.photo_url || null
+    };
+
+    var btn = this;
+    btn.disabled = true;
+    try {
+      var res = await fetch('/api/priced-items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error();
+      var saved = await res.json();
+      allProducts.unshift(saved);
+      addProductToCart(saved, size);
+      closeSizePicker();
+      showToast('已新增尺寸並加入這張訂單');
+    } catch (e) {
+      showToast('新增失敗，請再試一次');
+    } finally {
+      btn.disabled = false;
+    }
+  });
 
   function addProductToCart(product, size) {
     cart.push({
@@ -577,6 +673,12 @@
     if (key === 'last-month') return { start: ymd(new Date(y, m - 1, 1)), end: ymd(new Date(y, m, 0)) };
     if (key === 'this-year') return { start: y + '-01-01', end: y + '-12-31' };
     if (key === 'last-year') return { start: (y - 1) + '-01-01', end: (y - 1) + '-12-31' };
+    if (key === 'custom') {
+      var start = $('customRangeStart').value;
+      var end = $('customRangeEnd').value;
+      if (!start && !end) return null;
+      return { start: start || '0000-01-01', end: end || '9999-12-31' };
+    }
     return null;
   }
 
@@ -601,7 +703,12 @@
     });
   }
 
-  $('periodSelect').addEventListener('change', renderAll);
+  $('periodSelect').addEventListener('change', function () {
+    $('customRangeRow').style.display = (this.value === 'custom') ? '' : 'none';
+    renderAll();
+  });
+  $('customRangeStart').addEventListener('change', renderAll);
+  $('customRangeEnd').addEventListener('change', renderAll);
   $('searchRecords').addEventListener('input', renderAll);
 
   /* ---------- Stats / breakdown / status overview ---------- */
@@ -623,9 +730,14 @@
     baseOrders.forEach(function (o) {
       (o.order_items || []).forEach(function (it) {
         var name = it.item_name || '未命名商品';
-        if (!byProduct[name]) byProduct[name] = { name: name, count: 0, profit: 0 };
+        if (!byProduct[name]) byProduct[name] = { name: name, count: 0, profit: 0, bySize: {} };
+        var lineProfit = (Number(it.sold_price) || 0) - (Number(it.cost) || 0);
         byProduct[name].count += 1;
-        byProduct[name].profit += (Number(it.sold_price) || 0) - (Number(it.cost) || 0);
+        byProduct[name].profit += lineProfit;
+        var sizeKey = it.size || '未標示尺寸';
+        if (!byProduct[name].bySize[sizeKey]) byProduct[name].bySize[sizeKey] = { size: sizeKey, count: 0, profit: 0 };
+        byProduct[name].bySize[sizeKey].count += 1;
+        byProduct[name].bySize[sizeKey].profit += lineProfit;
       });
     });
     var rows = Object.keys(byProduct).map(function (k) { return byProduct[k]; });
@@ -639,12 +751,35 @@
       return;
     }
     rows.forEach(function (r) {
+      var sizeRows = Object.keys(r.bySize).map(function (k) { return r.bySize[k]; });
+      sizeRows.sort(function (a, b) { return b.count - a.count; });
+      var canExpand = !(sizeRows.length === 1 && sizeRows[0].size === '未標示尺寸');
+
+      var wrap = document.createElement('div');
       var row = document.createElement('div');
-      row.className = 'pb-row';
+      row.className = 'pb-row' + (canExpand ? ' expandable' : '');
       row.innerHTML =
-        '<div><div class="pb-name">' + escapeHtml(r.name) + '</div><div class="pb-sub">賣了 ' + r.count + ' 件</div></div>' +
+        '<div><div class="pb-name">' + (canExpand ? '<span class="pb-chevron">▸</span>' : '') + escapeHtml(r.name) + '</div><div class="pb-sub">賣了 ' + r.count + ' 件</div></div>' +
         '<div class="pb-profit">NT$' + fmt(r.profit) + '</div>';
-      el.appendChild(row);
+      wrap.appendChild(row);
+
+      if (canExpand) {
+        var detail = document.createElement('div');
+        detail.className = 'pb-detail';
+        detail.style.display = 'none';
+        detail.innerHTML = sizeRows.map(function (s) {
+          return '<div class="pb-size-row"><span>' + escapeHtml(s.size) + '</span><span>賣了 ' + s.count + ' 件 · NT$' + fmt(s.profit) + '</span></div>';
+        }).join('');
+        wrap.appendChild(detail);
+
+        row.addEventListener('click', function () {
+          var isOpen = detail.style.display !== 'none';
+          detail.style.display = isOpen ? 'none' : '';
+          row.querySelector('.pb-chevron').textContent = isOpen ? '▸' : '▾';
+        });
+      }
+
+      el.appendChild(wrap);
     });
   }
 
@@ -752,6 +887,7 @@
           '<div class="oc-top"><span class="oc-customer">' + escapeHtml(o.customer_name || '未填客人名稱') + '</span><span class="oc-date">' + escapeHtml(o.sold_at) + '</span></div>' +
           '<div class="oc-controls">' +
             '<select class="status-select s-' + status + '" data-action="status">' + statusOptions + '</select>' +
+            (o.status_updated_at ? '<span class="status-updated-note">狀態更新：' + formatDateTime(o.status_updated_at) + '</span>' : '') +
             '<span class="ship-by-note' + (isOverdue ? ' overdue' : '') + '">' + (isOverdue ? '⚠ 逾期未出貨 · ' : '') + '出貨期限：<input type="date" data-action="ship-by" value="' + (o.ship_by || '') + '"></span>' +
             (o.photo_url ? '<a class="oc-photo-link" href="' + escapeHtml(o.photo_url) + '" target="_blank" rel="noopener">📎 訂單照片</a>' : '') +
           '</div>' +
@@ -798,7 +934,9 @@
             body: JSON.stringify({ orderStatus: newStatus })
           });
           if (!res.ok) throw new Error();
-          o.order_status = newStatus;
+          var updated = await res.json();
+          o.order_status = updated.order_status;
+          o.status_updated_at = updated.status_updated_at;
           renderAll();
           showToast('狀態已更新');
         } catch (e) {
@@ -866,12 +1004,13 @@
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ orderStatus: newStatus })
-        });
+        }).then(function (res) { return res.ok ? res.json() : null; });
       }));
-      var failed = results.filter(function (r) { return !r.ok; }).length;
-      ids.forEach(function (id) {
-        var order = allOrders.find(function (o) { return o.id === id; });
-        if (order) order.order_status = newStatus;
+      var failed = results.filter(function (r) { return !r; }).length;
+      results.forEach(function (updated) {
+        if (!updated) return;
+        var order = allOrders.find(function (o) { return o.id === updated.id; });
+        if (order) { order.order_status = updated.order_status; order.status_updated_at = updated.status_updated_at; }
       });
       selectedOrderIds.clear();
       renderAll();

@@ -52,6 +52,7 @@ create table if not exists orders (
   id uuid primary key default gen_random_uuid(),
   customer_name text not null default '',
   order_status text not null default '待處理',
+  status_updated_at timestamptz not null default now(),
   ship_by date,
   shipping_fee numeric not null default 0,
   note text not null default '',
@@ -59,6 +60,9 @@ create table if not exists orders (
   sold_at date not null default current_date,
   created_at timestamptz not null default now()
 );
+
+-- 3b. 如果 orders 表已經建立過，單獨執行這行加「狀態最後更新時間」欄位：
+alter table orders add column if not exists status_updated_at timestamptz not null default now();
 
 -- 4. 訂單裡的每一樣商品
 create table if not exists order_items (

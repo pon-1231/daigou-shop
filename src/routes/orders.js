@@ -72,6 +72,7 @@ router.post('/', (req, res) => {
       const orderRow = {
         customer_name: String(body.customerName || '').slice(0, 200),
         order_status: ORDER_STATUSES.includes(body.orderStatus) ? body.orderStatus : ORDER_STATUSES[0],
+        status_updated_at: new Date().toISOString(),
         ship_by: body.shipBy || null,
         shipping_fee: Number(body.shippingFee) || 0,
         note: String(body.note || '').slice(0, 1000),
@@ -107,15 +108,25 @@ router.put('/:id', (req, res) => {
       let photoUrl = body.keepPhotoUrl || null;
       if (req.file) photoUrl = await uploadOrderPhoto(req.file);
 
+      const newStatus = ORDER_STATUSES.includes(body.orderStatus) ? body.orderStatus : ORDER_STATUSES[0];
+      const { data: existingOrder } = await supabase
+        .from('orders')
+        .select('order_status')
+        .eq('id', req.params.id)
+        .single();
+
       const orderRow = {
         customer_name: String(body.customerName || '').slice(0, 200),
-        order_status: ORDER_STATUSES.includes(body.orderStatus) ? body.orderStatus : ORDER_STATUSES[0],
+        order_status: newStatus,
         ship_by: body.shipBy || null,
         shipping_fee: Number(body.shippingFee) || 0,
         note: String(body.note || '').slice(0, 1000),
         photo_url: photoUrl,
         sold_at: body.soldAt || new Date().toISOString().slice(0, 10)
       };
+      if (!existingOrder || existingOrder.order_status !== newStatus) {
+        orderRow.status_updated_at = new Date().toISOString();
+      }
 
       const { data: order, error: orderErr } = await supabase
         .from('orders')
@@ -150,6 +161,7 @@ router.patch('/:id', async (req, res) => {
       return res.status(400).json({ error: '訂單狀態不合法' });
     }
     update.order_status = body.orderStatus;
+    update.status_updated_at = new Date().toISOString();
   }
   if (body.shipBy !== undefined) update.ship_by = body.shipBy || null;
 
