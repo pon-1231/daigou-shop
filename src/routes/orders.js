@@ -33,6 +33,16 @@ function parseItems(raw) {
   }));
 }
 
+async function recordHistory(orderId) {
+  const { data: snapshot } = await supabase
+    .from('orders')
+    .select('*, order_items(*)')
+    .eq('id', orderId)
+    .single();
+  if (!snapshot) return;
+  await supabase.from('order_history').insert({ order_id: orderId, snapshot });
+}
+
 async function uploadOrderPhoto(file) {
   const extMatch = (file.originalname || '').match(/\.([a-zA-Z0-9]+)$/);
   const ext = extMatch ? extMatch[1].toLowerCase() : 'jpg';
@@ -52,6 +62,17 @@ router.get('/', async (req, res) => {
     .select('*, order_items(*)')
     .order('sold_at', { ascending: false })
     .order('created_at', { ascending: false });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+router.get('/:id/history', async (req, res) => {
+  if (!supabase) return res.status(500).json({ error: 'Supabase 尚未設定' });
+  const { data, error } = await supabase
+    .from('order_history')
+    .select('*')
+    .eq('order_id', req.params.id)
+    .order('edited_at', { ascending: false });
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
@@ -115,6 +136,8 @@ router.put('/:id', (req, res) => {
         .eq('id', req.params.id)
         .single();
 
+      await recordHistory(req.params.id);
+
       const orderRow = {
         customer_name: String(body.customerName || '').slice(0, 200),
         order_status: newStatus,
@@ -168,6 +191,8 @@ router.patch('/:id', async (req, res) => {
   if (Object.keys(update).length === 0) {
     return res.status(400).json({ error: '沒有要更新的欄位' });
   }
+
+  await recordHistory(req.params.id);
 
   const { data, error } = await supabase
     .from('orders')

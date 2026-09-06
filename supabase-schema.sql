@@ -78,6 +78,16 @@ create table if not exists order_items (
 
 create index if not exists order_items_order_id_idx on order_items(order_id);
 
+-- 4b. 訂單編輯歷史(每次編輯或改狀態之前，先把當時的樣子存一份快照)
+create table if not exists order_history (
+  id uuid primary key default gen_random_uuid(),
+  order_id uuid not null references orders(id) on delete cascade,
+  snapshot jsonb not null,
+  edited_at timestamptz not null default now()
+);
+
+create index if not exists order_history_order_id_idx on order_history(order_id);
+
 -- 5. 把舊的 sales_records 資料搬進新的 orders / order_items（只需執行一次）
 --    如果這是全新安裝、sales_records 是空的，這段執行了也不會出錯，會直接跳過。
 insert into orders (id, customer_name, order_status, ship_by, shipping_fee, note, photo_url, sold_at, created_at)

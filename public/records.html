@@ -70,10 +70,15 @@
     margin-top: 10px; padding: 12px; border-radius: var(--radius-sm); background: var(--accent-soft);
   }
   .size-picker .sp-title { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
-  .size-picker .sp-quick { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
-  .size-picker .sp-quick button {
-    font-family: var(--font-body); font-size: 12.5px; padding: 6px 12px; border-radius: 999px;
-    border: 1px solid var(--accent); background: var(--bg-elevated); color: var(--accent); cursor: pointer;
+  .size-picker .sp-quick { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+  .sp-option-row { display: flex; gap: 4px; }
+  .sp-option-select {
+    flex: 1; font-family: var(--font-body); font-size: 12.5px; padding: 6px 12px; border-radius: 999px;
+    border: 1px solid var(--accent); background: var(--bg-elevated); color: var(--accent); cursor: pointer; text-align: left;
+  }
+  .sp-option-edit {
+    font-size: 13px; padding: 6px 10px; border-radius: 999px; border: 1px solid var(--line-strong);
+    background: var(--bg-elevated); color: var(--ink-soft); cursor: pointer;
   }
   .size-picker .sp-cancel {
     display: block; margin-top: 8px; font-family: var(--font-mono); font-size: 11px; color: var(--accent);
@@ -211,6 +216,11 @@
   .oc-totals { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12.5px; }
   .oc-note { font-size: 12.5px; color: var(--ink-soft); margin-top: 6px; }
   .oc-actions { display: flex; gap: 6px; margin-top: 10px; }
+
+  .oc-history { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); display: flex; flex-direction: column; gap: 10px; }
+  .oh-entry { font-size: 12px; background: var(--bg); border-radius: var(--radius-sm); padding: 8px 10px; }
+  .oh-time { font-family: var(--font-mono); font-size: 11px; color: var(--ink-soft); margin-bottom: 4px; font-weight: 600; }
+  .oh-line { color: var(--ink-soft); margin-top: 2px; }
 </style>
 </head>
 <body>
@@ -495,6 +505,9 @@
 
   var currentPickerName = null;
   var currentPickerTemplate = null;
+  var editingVariantId = null;
+  var editingVariantOriginalSizes = null;
+  var editingOriginalSize = null;
 
   function openSizePicker(name, options) {
     currentPickerName = name;
@@ -503,19 +516,50 @@
     var el = $('spVariants');
     el.innerHTML = '';
     options.forEach(function (opt) {
-      var btn = document.createElement('button');
-      btn.type = 'button';
-      btn.textContent = (opt.size || '(無標示尺寸)') + ' · NT$' + fmt(opt.product.final_price);
-      btn.addEventListener('click', function () {
+      var row = document.createElement('div');
+      row.className = 'sp-option-row';
+
+      var selectBtn = document.createElement('button');
+      selectBtn.type = 'button';
+      selectBtn.className = 'sp-option-select';
+      selectBtn.textContent = (opt.size || '(無標示尺寸)') + ' · NT$' + fmt(opt.product.final_price);
+      selectBtn.addEventListener('click', function () {
         addProductToCart(opt.product, opt.size);
         closeSizePicker();
       });
-      el.appendChild(btn);
+
+      var editBtn = document.createElement('button');
+      editBtn.type = 'button';
+      editBtn.className = 'sp-option-edit';
+      editBtn.textContent = '✎';
+      editBtn.title = '編輯這個尺寸的成本／售價';
+      editBtn.addEventListener('click', function () {
+        editingVariantId = opt.product.id;
+        editingVariantOriginalSizes = parseSizes(opt.product.sizes);
+        editingOriginalSize = opt.size;
+        $('spNewSize').value = opt.size || '';
+        $('spNewCost').value = opt.product.actual_cost;
+        $('spNewPrice').value = opt.product.final_price;
+        $('spNewAdd').textContent = '儲存修改';
+        $('spAddForm').style.display = 'grid';
+      });
+
+      row.appendChild(selectBtn);
+      row.appendChild(editBtn);
+      el.appendChild(row);
     });
-    $('spAddForm').style.display = 'none';
-    $('spNewSize').value = ''; $('spNewCost').value = ''; $('spNewPrice').value = '';
+    resetAddForm();
     $('sizePicker').style.display = '';
     $('sizePicker').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function resetAddForm() {
+    editingVariantId = null;
+    editingVariantOriginalSizes = null;
+    editingOriginalSize = null;
+    $('spAddForm').style.display = 'none';
+    $('spNewSize').value = ''; $('spNewCost').value = ''; $('spNewPrice').value = '';
+    $('spNewAdd').textContent = '加入';
   }
 
   function closeSizePicker() {
@@ -525,9 +569,38 @@
   }
 
   $('spAddSizeToggle').addEventListener('click', function () {
-    var form = $('spAddForm');
-    form.style.display = (form.style.display === 'none') ? 'grid' : 'none';
+    if ($('spAddForm').style.display === 'none') {
+      resetAddForm();
+      $('spAddForm').style.display = 'grid';
+    } else {
+      resetAddForm();
+    }
   });
+
+  function buildPricedItemPayload(tpl, sizesValue, costValue, priceValue) {
+    var m = priceValue > 0 ? ((priceValue - costValue) / priceValue * 100) : 0;
+    return {
+      name: currentPickerName,
+      sizes: sizesValue,
+      categoryKey: tpl.category_key || '',
+      categoryLabel: tpl.category_label || '未分類',
+      rmbPrice: tpl.rmb_price || 0,
+      rmbShip: tpl.rmb_ship || 0,
+      fxRate: tpl.fx_rate || 4.5,
+      crossShip: tpl.cross_ship || 0,
+      packaging: tpl.packaging || 0,
+      paymentFee: tpl.payment_fee || 0,
+      domesticShip: tpl.domestic_ship || 0,
+      multiplier: tpl.multiplier || 0,
+      manualPrice: priceValue,
+      chinaCost: tpl.china_cost || 0,
+      actualCost: costValue,
+      finalPrice: priceValue,
+      profit: priceValue - costValue,
+      margin: m,
+      photoUrl: tpl.photo_url || null
+    };
+  }
 
   $('spNewAdd').addEventListener('click', async function () {
     var size = $('spNewSize').value.trim();
@@ -536,38 +609,84 @@
     if (!size) { showToast('請先輸入尺寸'); return; }
     if (!currentPickerName) return;
 
-    var tpl = currentPickerTemplate || {};
-    var margin = price > 0 ? ((price - cost) / price * 100) : 0;
-    var payload = {
-      name: currentPickerName,
-      sizes: size,
-      categoryKey: tpl.category_key || '',
-      categoryLabel: tpl.category_label || '未分類',
-      rmbPrice: 0, rmbShip: 0, fxRate: 4.5,
-      crossShip: 0, packaging: 0, paymentFee: 0,
-      domesticShip: tpl.domestic_ship || 0,
-      multiplier: 0, manualPrice: price,
-      chinaCost: 0, actualCost: cost, finalPrice: price,
-      profit: price - cost, margin: margin,
-      photoUrl: tpl.photo_url || null
-    };
-
+    var isEditing = !!editingVariantId;
     var btn = this;
     btn.disabled = true;
+
     try {
-      var res = await fetch('/api/priced-items', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (!res.ok) throw new Error();
-      var saved = await res.json();
-      allProducts.unshift(saved);
-      addProductToCart(saved, size);
+      if (!isEditing) {
+        // 全新尺寸：不知道詳細的成本拆解，只記錄成本/售價這兩個數字。
+        var tpl = currentPickerTemplate || {};
+        var newPayload = {
+          name: currentPickerName, sizes: size,
+          categoryKey: tpl.category_key || '', categoryLabel: tpl.category_label || '未分類',
+          rmbPrice: 0, rmbShip: 0, fxRate: 4.5, crossShip: 0, packaging: 0, paymentFee: 0,
+          domesticShip: tpl.domestic_ship || 0, multiplier: 0,
+          manualPrice: price, chinaCost: 0, actualCost: cost, finalPrice: price,
+          profit: price - cost, margin: price > 0 ? ((price - cost) / price * 100) : 0,
+          photoUrl: tpl.photo_url || null
+        };
+        var res = await fetch('/api/priced-items', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newPayload)
+        });
+        if (!res.ok) throw new Error();
+        var saved = await res.json();
+        allProducts.unshift(saved);
+        addProductToCart(saved, size);
+        showToast('已新增尺寸並加入這張訂單');
+        renderGallery();
+        closeSizePicker();
+        return;
+      }
+
+      var existing = allProducts.find(function (p) { return p.id === editingVariantId; }) || {};
+      var remainingSizes = (editingVariantOriginalSizes || []).filter(function (s) { return s !== editingOriginalSize; });
+
+      if (remainingSizes.length > 0) {
+        // 這個尺寸原本跟其他尺寸共用同一筆、同一個價錢。
+        // 先把原本那筆縮成只剩下沒被改價錢的尺寸，價錢維持不變；
+        // 再另外新增一筆，專門存這個被改價錢的尺寸。
+        var keepPayload = buildPricedItemPayload(existing, remainingSizes.join(','), existing.actual_cost, existing.final_price);
+        var keepRes = await fetch('/api/priced-items/' + editingVariantId, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(keepPayload)
+        });
+        if (!keepRes.ok) throw new Error();
+        var keptSaved = await keepRes.json();
+        var keptIdx = allProducts.findIndex(function (p) { return p.id === keptSaved.id; });
+        if (keptIdx !== -1) allProducts[keptIdx] = keptSaved;
+
+        var splitPayload = buildPricedItemPayload(existing, size, cost, price);
+        var newRes = await fetch('/api/priced-items', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(splitPayload)
+        });
+        if (!newRes.ok) throw new Error();
+        var newSaved = await newRes.json();
+        allProducts.unshift(newSaved);
+        showToast('已把「' + size + '」拆成獨立尺寸並更新價格');
+      } else {
+        // 這筆本來就只代表這一個尺寸，直接原地更新。
+        var editPayload = buildPricedItemPayload(existing, size, cost, price);
+        var editRes = await fetch('/api/priced-items/' + editingVariantId, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(editPayload)
+        });
+        if (!editRes.ok) throw new Error();
+        var editSaved = await editRes.json();
+        var editIdx = allProducts.findIndex(function (p) { return p.id === editSaved.id; });
+        if (editIdx !== -1) allProducts[editIdx] = editSaved;
+        showToast('已更新這個尺寸的價格');
+      }
       closeSizePicker();
-      showToast('已新增尺寸並加入這張訂單');
+      renderGallery();
     } catch (e) {
-      showToast('新增失敗，請再試一次');
+      showToast(isEditing ? '更新失敗，請再試一次' : '新增失敗，請再試一次');
     } finally {
       btn.disabled = false;
     }
@@ -899,10 +1018,46 @@
             '<span class="chip ' + cls + '">淨利 NT$' + fmt(profit) + '</span>' +
           '</div>' +
           (o.note ? '<div class="oc-note">' + escapeHtml(o.note) + '</div>' : '') +
-          '<div class="oc-actions"><button type="button" class="btn small" data-action="edit">編輯</button><button type="button" class="btn small ghost" data-action="delete">刪除</button></div>' +
+          '<div class="oc-actions">' +
+            '<button type="button" class="btn small" data-action="edit">編輯</button>' +
+            '<button type="button" class="btn small" data-action="history">編輯紀錄</button>' +
+            '<button type="button" class="btn small ghost" data-action="delete">刪除</button>' +
+          '</div>' +
+          '<div class="oc-history" data-history style="display:none;"></div>' +
         '</div>';
 
       listEl.appendChild(card);
+
+      card.querySelector('[data-action="history"]').addEventListener('click', async function () {
+        var panel = card.querySelector('[data-history]');
+        var btn = this;
+        if (panel.style.display !== 'none') { panel.style.display = 'none'; return; }
+        panel.style.display = '';
+        panel.innerHTML = '<p class="empty-state">載入中…</p>';
+        try {
+          var res = await fetch('/api/orders/' + o.id + '/history');
+          if (!res.ok) throw new Error();
+          var history = await res.json();
+          if (history.length === 0) {
+            panel.innerHTML = '<p class="empty-state">還沒有編輯紀錄。</p>';
+            return;
+          }
+          panel.innerHTML = history.map(function (h) {
+            var s = h.snapshot || {};
+            var itemsSummary = (s.order_items || []).map(function (it) {
+              return escapeHtml(it.item_name || '未命名商品') + (it.size ? '(' + escapeHtml(it.size) + ')' : '') + ' NT$' + fmt(it.cost) + '→NT$' + fmt(it.sold_price);
+            }).join('、');
+            return '<div class="oh-entry">' +
+              '<div class="oh-time">' + formatDateTime(h.edited_at) + ' 之前的樣子</div>' +
+              '<div class="oh-line">客人：' + escapeHtml(s.customer_name || '未填') + ' · 狀態：' + escapeHtml(s.order_status || '') + (s.ship_by ? ' · 出貨期限：' + escapeHtml(s.ship_by) : '') + '</div>' +
+              '<div class="oh-line">商品：' + (itemsSummary || '無') + '</div>' +
+              (s.note ? '<div class="oh-line">備註：' + escapeHtml(s.note) + '</div>' : '') +
+            '</div>';
+          }).join('');
+        } catch (e) {
+          panel.innerHTML = '<p class="empty-state">編輯紀錄載入失敗。</p>';
+        }
+      });
 
       card.querySelector('[data-action="select"]').addEventListener('change', function () {
         if (this.checked) selectedOrderIds.add(o.id); else selectedOrderIds.delete(o.id);
