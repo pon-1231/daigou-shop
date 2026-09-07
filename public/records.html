@@ -45,8 +45,15 @@
 
   /* ---------- Product gallery / size picker / cart ---------- */
   .product-gallery {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px;
     max-height: 320px; overflow-y: auto; padding: 2px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .gallery-group summary {
+    cursor: pointer; font-weight: 700; font-size: 12px; color: var(--ink-soft);
+    padding: 4px 0; outline: none;
+  }
+  .gallery-group-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; margin-top: 6px;
   }
   .gallery-card {
     border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--bg);
@@ -84,10 +91,10 @@
     display: block; margin-top: 8px; font-family: var(--font-mono); font-size: 11px; color: var(--accent);
     background: none; border: none; cursor: pointer; text-decoration: underline;
   }
-  .size-picker .sp-add-toggle {
-    display: block; font-family: var(--font-mono); font-size: 11.5px; color: var(--accent);
-    background: none; border: none; cursor: pointer; padding: 0;
+  .size-picker .sp-hint-link {
+    font-size: 11.5px; color: var(--ink-soft); margin: 8px 0 0;
   }
+  .size-picker .sp-hint-link a { color: var(--accent); font-weight: 600; }
   .size-picker .sp-add-form { display: grid; grid-template-columns: 1fr 0.8fr 0.8fr auto; gap: 6px; margin-top: 8px; }
   .size-picker .sp-add-form input {
     font-size: 12.5px; padding: 6px 8px; border-radius: var(--radius-sm); border: 1px solid var(--line-strong); width: 100%;
@@ -306,13 +313,13 @@
             <div class="size-picker" id="sizePicker" style="display:none;">
               <div class="sp-title">「<span id="spItemName"></span>」選尺寸</div>
               <div class="sp-quick" id="spVariants"></div>
-              <button type="button" id="spAddSizeToggle" class="sp-add-toggle">+ 新增其他尺寸</button>
               <div class="sp-add-form" id="spAddForm" style="display:none;">
                 <input type="text" id="spNewSize" placeholder="尺寸">
                 <input type="number" id="spNewCost" placeholder="成本" min="0" step="1">
                 <input type="number" id="spNewPrice" placeholder="售價" min="0" step="1">
-                <button type="button" id="spNewAdd">加入</button>
+                <button type="button" id="spNewAdd">儲存修改</button>
               </div>
+              <p class="sp-hint-link">找不到你要的尺寸？到<a id="spGotoPricing" href="/pricing.html" target="_blank" rel="noopener">定價計算機</a>幫這個商品新增尺寸。</p>
               <button type="button" id="spCancel" class="sp-cancel">✕ 取消</button>
             </div>
           </div>
@@ -456,6 +463,49 @@
     return options;
   }
 
+  function buildGalleryCard(group) {
+    var options = groupOptions(group);
+    var thumbUrl = (group.variants.filter(function (v) { return v.photo_url; })[0] || {}).photo_url;
+    var prices = options.map(function (o) { return Number(o.product.final_price) || 0; });
+    var priceLabel = Math.min.apply(null, prices) !== Math.max.apply(null, prices)
+      ? 'NT$' + fmt(Math.min.apply(null, prices)) + '~' + fmt(Math.max.apply(null, prices))
+      : 'NT$' + fmt(prices[0]);
+    var variantIds = group.variants.map(function (v) { return v.id; });
+    var countInCart = cart.filter(function (c) { return variantIds.indexOf(c.productId) !== -1; }).length;
+
+    var card = document.createElement('div');
+    card.className = 'gallery-card';
+    card.innerHTML =
+      (thumbUrl ? '<img src="' + escapeHtml(thumbUrl) + '" alt="">' : '<div class="gc-placeholder">🖼️</div>') +
+      '<div class="gc-name">' + escapeHtml(group.name) + '</div>' +
+      '<div class="gc-price">' + priceLabel + '</div>' +
+      (countInCart > 0 ? '<div class="gc-count">' + countInCart + '</div>' : '');
+    card.addEventListener('click', function () {
+      if (options.length === 1 && !options[0].size) {
+        addProductToCart(options[0].product, '');
+      } else {
+        openSizePicker(group.name, options);
+      }
+    });
+    return card;
+  }
+
+  function groupBySortGroup(products) {
+    var groups = {};
+    var order = [];
+    products.forEach(function (p) {
+      var g = (p.sort_group || '').trim() || '未分類';
+      if (!groups[g]) { groups[g] = []; order.push(g); }
+      groups[g].push(p);
+    });
+    order.sort(function (a, b) {
+      if (a === '未分類') return 1;
+      if (b === '未分類') return -1;
+      return a.localeCompare(b, 'zh-Hant');
+    });
+    return order.map(function (g) { return { group: g, products: groups[g] }; });
+  }
+
   function renderGallery() {
     var el = $('productGallery');
     var term = ($('productSearch').value || '').trim().toLowerCase();
@@ -473,31 +523,29 @@
     }
 
     el.innerHTML = '';
-    groupProducts(filtered).forEach(function (group) {
-      var options = groupOptions(group);
-      var thumbUrl = (group.variants.filter(function (v) { return v.photo_url; })[0] || {}).photo_url;
-      var prices = options.map(function (o) { return Number(o.product.final_price) || 0; });
-      var priceLabel = Math.min.apply(null, prices) !== Math.max.apply(null, prices)
-        ? 'NT$' + fmt(Math.min.apply(null, prices)) + '~' + fmt(Math.max.apply(null, prices))
-        : 'NT$' + fmt(prices[0]);
-      var variantIds = group.variants.map(function (v) { return v.id; });
-      var countInCart = cart.filter(function (c) { return variantIds.indexOf(c.productId) !== -1; }).length;
+    var sortGroups = groupBySortGroup(filtered);
+    var onlyUngrouped = sortGroups.length === 1 && sortGroups[0].group === '未分類';
 
-      var card = document.createElement('div');
-      card.className = 'gallery-card';
-      card.innerHTML =
-        (thumbUrl ? '<img src="' + escapeHtml(thumbUrl) + '" alt="">' : '<div class="gc-placeholder">🖼️</div>') +
-        '<div class="gc-name">' + escapeHtml(group.name) + '</div>' +
-        '<div class="gc-price">' + priceLabel + '</div>' +
-        (countInCart > 0 ? '<div class="gc-count">' + countInCart + '</div>' : '');
-      card.addEventListener('click', function () {
-        if (options.length === 1 && !options[0].size) {
-          addProductToCart(options[0].product, '');
-        } else {
-          openSizePicker(group.name, options);
-        }
-      });
-      el.appendChild(card);
+    if (onlyUngrouped) {
+      var grid = document.createElement('div');
+      grid.className = 'gallery-group-grid';
+      groupProducts(sortGroups[0].products).forEach(function (group) { grid.appendChild(buildGalleryCard(group)); });
+      el.appendChild(grid);
+      return;
+    }
+
+    sortGroups.forEach(function (sg) {
+      var details = document.createElement('details');
+      details.className = 'gallery-group';
+      details.open = true;
+      var summary = document.createElement('summary');
+      summary.textContent = sg.group + '（' + sg.products.length + '）';
+      details.appendChild(summary);
+      var grid = document.createElement('div');
+      grid.className = 'gallery-group-grid';
+      groupProducts(sg.products).forEach(function (group) { grid.appendChild(buildGalleryCard(group)); });
+      details.appendChild(grid);
+      el.appendChild(details);
     });
   }
 
@@ -513,6 +561,7 @@
     currentPickerName = name;
     currentPickerTemplate = options[0] ? options[0].product : null;
     $('spItemName').textContent = name;
+    $('spGotoPricing').href = '/pricing.html?product=' + encodeURIComponent(name);
     var el = $('spVariants');
     el.innerHTML = '';
     options.forEach(function (opt) {
@@ -559,7 +608,6 @@
     editingOriginalSize = null;
     $('spAddForm').style.display = 'none';
     $('spNewSize').value = ''; $('spNewCost').value = ''; $('spNewPrice').value = '';
-    $('spNewAdd').textContent = '加入';
   }
 
   function closeSizePicker() {
@@ -568,20 +616,12 @@
     currentPickerTemplate = null;
   }
 
-  $('spAddSizeToggle').addEventListener('click', function () {
-    if ($('spAddForm').style.display === 'none') {
-      resetAddForm();
-      $('spAddForm').style.display = 'grid';
-    } else {
-      resetAddForm();
-    }
-  });
-
   function buildPricedItemPayload(tpl, sizesValue, costValue, priceValue) {
     var m = priceValue > 0 ? ((priceValue - costValue) / priceValue * 100) : 0;
     return {
       name: currentPickerName,
       sizes: sizesValue,
+      sortGroup: tpl.sort_group || '',
       categoryKey: tpl.category_key || '',
       categoryLabel: tpl.category_label || '未分類',
       rmbPrice: tpl.rmb_price || 0,
@@ -607,40 +647,12 @@
     var cost = Number($('spNewCost').value) || 0;
     var price = Number($('spNewPrice').value) || 0;
     if (!size) { showToast('請先輸入尺寸'); return; }
-    if (!currentPickerName) return;
+    if (!currentPickerName || !editingVariantId) return;
 
-    var isEditing = !!editingVariantId;
     var btn = this;
     btn.disabled = true;
 
     try {
-      if (!isEditing) {
-        // 全新尺寸：不知道詳細的成本拆解，只記錄成本/售價這兩個數字。
-        var tpl = currentPickerTemplate || {};
-        var newPayload = {
-          name: currentPickerName, sizes: size,
-          categoryKey: tpl.category_key || '', categoryLabel: tpl.category_label || '未分類',
-          rmbPrice: 0, rmbShip: 0, fxRate: 4.5, crossShip: 0, packaging: 0, paymentFee: 0,
-          domesticShip: tpl.domestic_ship || 0, multiplier: 0,
-          manualPrice: price, chinaCost: 0, actualCost: cost, finalPrice: price,
-          profit: price - cost, margin: price > 0 ? ((price - cost) / price * 100) : 0,
-          photoUrl: tpl.photo_url || null
-        };
-        var res = await fetch('/api/priced-items', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(newPayload)
-        });
-        if (!res.ok) throw new Error();
-        var saved = await res.json();
-        allProducts.unshift(saved);
-        addProductToCart(saved, size);
-        showToast('已新增尺寸並加入這張訂單');
-        renderGallery();
-        closeSizePicker();
-        return;
-      }
-
       var existing = allProducts.find(function (p) { return p.id === editingVariantId; }) || {};
       var remainingSizes = (editingVariantOriginalSizes || []).filter(function (s) { return s !== editingOriginalSize; });
 
@@ -686,7 +698,7 @@
       closeSizePicker();
       renderGallery();
     } catch (e) {
-      showToast(isEditing ? '更新失敗，請再試一次' : '新增失敗，請再試一次');
+      showToast('更新失敗，請再試一次');
     } finally {
       btn.disabled = false;
     }

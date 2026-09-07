@@ -32,7 +32,8 @@ function buildRow(body) {
     profit: Number(body.profit) || 0,
     margin: Number(body.margin) || 0,
     photo_url: body.photoUrl || null,
-    sizes: body.sizes ? String(body.sizes).slice(0, 200) : null
+    sizes: body.sizes ? String(body.sizes).slice(0, 200) : null,
+    sort_group: body.sortGroup ? String(body.sortGroup).slice(0, 50) : null
   };
 }
 
