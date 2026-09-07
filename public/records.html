@@ -87,6 +87,9 @@
     font-size: 13px; padding: 6px 10px; border-radius: 999px; border: 1px solid var(--line-strong);
     background: var(--bg-elevated); color: var(--ink-soft); cursor: pointer;
   }
+  .sp-option-addnew {
+    border-style: dashed; color: var(--ink-soft); font-weight: 600;
+  }
   .size-picker .sp-cancel {
     display: block; margin-top: 8px; font-family: var(--font-mono); font-size: 11px; color: var(--accent);
     background: none; border: none; cursor: pointer; text-decoration: underline;
@@ -319,7 +322,7 @@
                 <input type="number" id="spNewPrice" placeholder="售價" min="0" step="1">
                 <button type="button" id="spNewAdd">儲存修改</button>
               </div>
-              <p class="sp-hint-link">找不到你要的尺寸？到<a id="spGotoPricing" href="/pricing.html" target="_blank" rel="noopener">定價計算機</a>幫這個商品新增尺寸。</p>
+              <p class="sp-hint-link">這個尺寸成本結構不一樣（不是套用同樣的成本／售價）？到<a id="spGotoPricing" href="/pricing.html" target="_blank" rel="noopener">定價計算機</a>幫這個商品重新設定完整拆解。</p>
               <button type="button" id="spCancel" class="sp-cancel">✕ 取消</button>
             </div>
           </div>
@@ -556,6 +559,7 @@
   var editingVariantId = null;
   var editingVariantOriginalSizes = null;
   var editingOriginalSize = null;
+  var isAddingNewSize = false;
 
   function openSizePicker(name, options) {
     currentPickerName = name;
@@ -583,6 +587,7 @@
       editBtn.textContent = '✎';
       editBtn.title = '編輯這個尺寸的成本／售價';
       editBtn.addEventListener('click', function () {
+        isAddingNewSize = false;
         editingVariantId = opt.product.id;
         editingVariantOriginalSizes = parseSizes(opt.product.sizes);
         editingOriginalSize = opt.size;
@@ -591,18 +596,49 @@
         $('spNewPrice').value = opt.product.final_price;
         $('spNewAdd').textContent = '儲存修改';
         $('spAddForm').style.display = 'grid';
+        $('spNewSize').focus();
       });
 
       row.appendChild(selectBtn);
       row.appendChild(editBtn);
       el.appendChild(row);
     });
+
+    var addRow = document.createElement('div');
+    addRow.className = 'sp-option-row';
+    var addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'sp-option-select sp-option-addnew';
+    addBtn.textContent = '+ 新增尺寸';
+    addBtn.addEventListener('click', function () {
+      isAddingNewSize = true;
+      editingVariantId = null;
+      editingVariantOriginalSizes = null;
+      editingOriginalSize = null;
+      var tpl = currentPickerTemplate || {};
+      $('spNewSize').value = '';
+      $('spNewCost').value = tpl.actual_cost != null ? tpl.actual_cost : '';
+      $('spNewPrice').value = tpl.final_price != null ? tpl.final_price : '';
+      $('spNewAdd').textContent = '加入';
+      $('spAddForm').style.display = 'grid';
+      $('spNewSize').focus();
+    });
+    addRow.appendChild(addBtn);
+    el.appendChild(addRow);
+
     resetAddForm();
     $('sizePicker').style.display = '';
     $('sizePicker').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
+  function refreshPickerForCurrentName() {
+    if (!currentPickerName) return;
+    var matches = allProducts.filter(function (p) { return (p.name || '未命名商品') === currentPickerName; });
+    openSizePicker(currentPickerName, groupOptions({ name: currentPickerName, variants: matches }));
+  }
+
   function resetAddForm() {
+    isAddingNewSize = false;
     editingVariantId = null;
     editingVariantOriginalSizes = null;
     editingOriginalSize = null;
@@ -647,12 +683,34 @@
     var cost = Number($('spNewCost').value) || 0;
     var price = Number($('spNewPrice').value) || 0;
     if (!size) { showToast('請先輸入尺寸'); return; }
-    if (!currentPickerName || !editingVariantId) return;
+    if (!currentPickerName) return;
+    if (!isAddingNewSize && !editingVariantId) return;
 
     var btn = this;
     btn.disabled = true;
 
     try {
+      if (isAddingNewSize) {
+        var dupCheck = allProducts.some(function (p) {
+          return (p.name || '') === currentPickerName && parseSizes(p.sizes).indexOf(size) !== -1;
+        });
+        if (dupCheck) { showToast('這個尺寸已經有了，改用✎編輯它的價格'); btn.disabled = false; return; }
+
+        var newPayload = buildPricedItemPayload(currentPickerTemplate || {}, size, cost, price);
+        var newRes = await fetch('/api/priced-items', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newPayload)
+        });
+        if (!newRes.ok) throw new Error();
+        var newSaved = await newRes.json();
+        allProducts.unshift(newSaved);
+        showToast('已新增「' + size + '」');
+        renderGallery();
+        refreshPickerForCurrentName();
+        return;
+      }
+
       var existing = allProducts.find(function (p) { return p.id === editingVariantId; }) || {};
       var remainingSizes = (editingVariantOriginalSizes || []).filter(function (s) { return s !== editingOriginalSize; });
 

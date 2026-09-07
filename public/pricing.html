@@ -106,6 +106,13 @@
   .count-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; margin-left: 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 11px; font-family: var(--font-mono); font-weight: 700; }
   .list-head input[type="text"] { font-size: 13.5px; padding: 7px 14px; border-radius: 999px; width: 200px; }
 
+  .group-quick-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+  .group-quick-btns button {
+    font-family: var(--font-mono); font-size: 12.5px; font-weight: 700; padding: 5px 12px; border-radius: 999px;
+    border: 1px solid var(--line-strong); background: var(--bg); color: var(--ink-soft); cursor: pointer;
+  }
+  .group-quick-btns button.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+
   .variant-list { display: flex; flex-direction: column; gap: 6px; }
   .variant-row {
     display: flex; justify-content: space-between; align-items: center; gap: 10px;
@@ -210,7 +217,8 @@
         </div>
 
         <div class="product-name-row">
-          <label>分類群組<span class="hint">選填，例如 A、B、娃娃、吊飾…之後可以依分類快速找商品，數量不限</span></label>
+          <label>分類群組<span class="hint">選填，先給 A~E 快速選，也可以直接打字改成別的名稱（例如「娃娃」）；數量不限，之後可以依分類快速找商品</span></label>
+          <div class="group-quick-btns" id="groupQuickBtns"></div>
           <input type="text" id="productGroup" list="groupOptions" placeholder="例如：A">
           <datalist id="groupOptions"></datalist>
         </div>
@@ -548,6 +556,25 @@
     $('groupOptions').innerHTML = groups.map(function (g) { return '<option value="' + escapeHtml(g) + '">'; }).join('');
   }
 
+  var GROUP_QUICK_PICKS = ['A', 'B', 'C', 'D', 'E'];
+  function renderGroupQuickButtons() {
+    var el = $('groupQuickBtns');
+    var current = $('productGroup').value.trim();
+    el.innerHTML = '';
+    GROUP_QUICK_PICKS.forEach(function (g) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = g;
+      if (g === current) btn.className = 'active';
+      btn.addEventListener('click', function () {
+        $('productGroup').value = (current === g) ? '' : g;
+        renderGroupQuickButtons();
+      });
+      el.appendChild(btn);
+    });
+  }
+  $('productGroup').addEventListener('input', renderGroupQuickButtons);
+
   function checkSizeVariants() {
     var name = $('productName').value.trim();
     var hintEl = $('sizeVariantsHint');
@@ -607,6 +634,7 @@
     var def = catDefs.filter(function (d) { return d.key === it.category_key; })[0];
     if (def) { setCategory(def, true); slider.value = it.multiplier; }
     recalc();
+    renderGroupQuickButtons();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -670,6 +698,7 @@
     manualPrice.value = '';
     setCategory(catDefs[1]);
     checkSizeVariants();
+    renderGroupQuickButtons();
   });
 
   $('resetAll').addEventListener('click', function () {
@@ -687,6 +716,7 @@
     $('sliderMinLabel').textContent = '1.40×'; $('sliderMaxLabel').textContent = '1.60×';
     recalc();
     checkSizeVariants();
+    renderGroupQuickButtons();
   });
 
   $('saveItem').addEventListener('click', async function () {
@@ -729,6 +759,7 @@
       renderSavedList($('searchSaved').value);
       refreshGroupOptions();
       checkSizeVariants();
+      renderGroupQuickButtons();
     } catch (e) {
       showToast(isEditing ? '更新失敗，請檢查網路後再試一次' : '儲存失敗，請檢查網路後再試一次');
     } finally {
@@ -740,6 +771,7 @@
   $('searchSaved').addEventListener('input', function () { renderSavedList(this.value); });
 
   recalc();
+  renderGroupQuickButtons();
   try {
     var qProduct = new URLSearchParams(window.location.search).get('product');
     if (qProduct) { $('productName').value = qProduct; }
