@@ -23,6 +23,13 @@
 
   .live-profit { display: flex; gap: 8px; margin: 4px 0 18px; flex-wrap: wrap; }
 
+  #note {
+    font-size: 16px; min-height: 90px; font-weight: 500;
+    border: 2px solid var(--bad); background: var(--bad-soft); color: var(--ink);
+  }
+  #note::placeholder { color: var(--bad); opacity: 0.6; }
+  #note:focus { outline-color: var(--bad); border-color: var(--bad); }
+
   .list-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
   .list-head h2 { margin: 0; }
   .list-head input[type="text"] { font-size: 13.5px; padding: 7px 14px; border-radius: 999px; width: 200px; }
