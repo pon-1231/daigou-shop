@@ -118,7 +118,9 @@
     font-family: var(--font-body); font-size: 12.5px; color: var(--accent); background: none; border: none;
     text-decoration: underline; cursor: pointer; padding: 0; font-weight: 600;
   }
-  .extra-row-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+  .extra-row-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 8px; }
+  .extra-row-item { padding-bottom: 6px; border-bottom: 1px dashed var(--line); }
+  .extra-row-item:last-child { border-bottom: none; }
   .extra-row { display: grid; grid-template-columns: 1fr 0.8fr 0.8fr auto; gap: 6px; align-items: center; }
   .extra-row input {
     font-size: 12.5px; padding: 7px 10px; border-radius: var(--radius-sm); border: 1px solid var(--line-strong);
@@ -130,6 +132,15 @@
     background: var(--bg-elevated); color: var(--bad); cursor: pointer;
   }
   @media (max-width: 480px) { .extra-row { grid-template-columns: 1fr 1fr; } }
+  .extra-row-info {
+    font-size: 11.5px; color: var(--ink-soft); margin-top: 5px; font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  }
+  .extra-row-info .good { color: var(--good); } .extra-row-info .warn { color: var(--warn); } .extra-row-info .bad { color: var(--bad); }
+  .extra-row-info button {
+    font-family: var(--font-body); font-size: 11px; color: var(--accent); background: none; border: none;
+    text-decoration: underline; cursor: pointer; padding: 0;
+  }
 
   .saved-group { margin-bottom: 16px; }
   .saved-group summary {
@@ -149,6 +160,20 @@
     background: var(--bg); border: 1px solid var(--line);
   }
   .si-text { flex: 1; min-width: 0; }
+
+  .saved-item-multi { align-items: flex-start; }
+  .si-size-lines { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+  .si-size-line {
+    display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 7px 10px; background: var(--bg-elevated); border-radius: var(--radius-sm);
+  }
+  .si-size-label { font-size: 12.5px; font-weight: 700; min-width: 44px; }
+  .si-size-nums { font-size: 11.5px; color: var(--ink-soft); font-family: var(--font-mono); font-variant-numeric: tabular-nums; flex: 1; min-width: 0; }
+  .si-size-actions { display: flex; gap: 4px; flex-shrink: 0; }
+  .si-size-actions button {
+    font-family: var(--font-body); font-size: 11px; padding: 3px 8px; border-radius: var(--radius-sm);
+    border: 1px solid var(--line-strong); background: var(--bg); color: var(--ink-soft); cursor: pointer;
+  }
 
   .photo-drop {
     border: 1px dashed var(--line-strong); border-radius: var(--radius-sm); padding: 14px;
@@ -511,6 +536,68 @@
     return row;
   }
 
+  function groupByName(items) {
+    var byName = {};
+    var order = [];
+    items.forEach(function (it) {
+      var n = it.name || '未命名商品';
+      if (!byName[n]) { byName[n] = []; order.push(n); }
+      byName[n].push(it);
+    });
+    return order.map(function (n) { return byName[n]; });
+  }
+
+  function buildSavedProductCard(items) {
+    if (items.length === 1) return buildSavedItemRow(items[0]);
+
+    var first = items[0];
+    var wrap = document.createElement('div');
+    wrap.className = 'saved-item saved-item-multi';
+    var thumbUrl = (items.filter(function (it) { return it.photo_url; })[0] || {}).photo_url;
+    var thumbHtml = thumbUrl ? '<img class="si-thumb" src="' + escapeHtml(thumbUrl) + '" alt="">' : '';
+
+    var sizeLinesHtml = items.map(function (it) {
+      return '<div class="si-size-line" data-id="' + it.id + '">' +
+        '<span class="si-size-label">' + escapeHtml(it.sizes || '(無標示尺寸)') + '</span>' +
+        '<span class="si-size-nums">成本 NT$' + fmt(it.actual_cost) + ' → 售價 NT$' + fmt(it.final_price) + ' · 淨利率 ' + Math.round(it.margin) + '%</span>' +
+        '<span class="si-size-actions">' +
+          '<button type="button" data-action="edit">編輯</button>' +
+          '<button type="button" data-action="apply">套用</button>' +
+          '<button type="button" data-action="delete">刪除</button>' +
+        '</span>' +
+      '</div>';
+    }).join('');
+
+    wrap.innerHTML =
+      thumbHtml +
+      '<div class="si-text">' +
+        '<div class="si-name">' + escapeHtml(first.name || '未命名商品') + '<span class="si-cat-badge">' + escapeHtml(first.category_label) + '</span><span class="count-badge">' + items.length + ' 種尺寸</span></div>' +
+        '<div class="si-size-lines">' + sizeLinesHtml + '</div>' +
+      '</div>';
+
+    items.forEach(function (it) {
+      var lineEl = wrap.querySelector('.si-size-line[data-id="' + it.id + '"]');
+      lineEl.querySelector('[data-action="edit"]').addEventListener('click', function () { editItem(it); });
+      lineEl.querySelector('[data-action="apply"]').addEventListener('click', function () { applyItem(it); });
+      lineEl.querySelector('[data-action="delete"]').addEventListener('click', async function () {
+        try {
+          var res = await fetch('/api/priced-items/' + it.id, { method: 'DELETE' });
+          if (!res.ok) throw new Error();
+          allSavedItems = allSavedItems.filter(function (x) { return x.id !== it.id; });
+          if (editingId === it.id) exitEditMode();
+          renderSavedList($('searchSaved').value);
+          showToast('已刪除');
+        } catch (e) { showToast('刪除失敗，請再試一次'); }
+      });
+    });
+
+    return wrap;
+  }
+
+  function appendItemsGrouped(container, items) {
+    groupByName(items).forEach(function (nameItems) { container.appendChild(buildSavedProductCard(nameItems)); });
+  }
+
   function groupByCategory(items) {
     var groups = {};
     var order = [];
@@ -544,7 +631,7 @@
     var onlyUngrouped = groups.length === 1 && groups[0].group === '未分類';
 
     if (onlyUngrouped) {
-      groups[0].items.forEach(function (it) { listEl.appendChild(buildSavedItemRow(it)); });
+      appendItemsGrouped(listEl, groups[0].items);
       return;
     }
 
@@ -557,7 +644,7 @@
       details.appendChild(summary);
       var innerList = document.createElement('div');
       innerList.className = 'saved-list';
-      g.items.forEach(function (it) { innerList.appendChild(buildSavedItemRow(it)); });
+      appendItemsGrouped(innerList, g.items);
       details.appendChild(innerList);
       listEl.appendChild(details);
     });
@@ -609,6 +696,9 @@
     var el = $('extraRowList');
     el.innerHTML = '';
     extraRows.forEach(function (row, idx) {
+      var item = document.createElement('div');
+      item.className = 'extra-row-item';
+
       var wrap = document.createElement('div');
       wrap.className = 'extra-row';
 
@@ -618,11 +708,11 @@
 
       var costInput = document.createElement('input');
       costInput.type = 'number'; costInput.placeholder = '成本'; costInput.min = '0'; costInput.step = '1'; costInput.value = row.cost;
-      costInput.addEventListener('input', function () { row.cost = Number(costInput.value) || 0; });
+      costInput.addEventListener('input', function () { row.cost = Number(costInput.value) || 0; updateInfo(); });
 
       var priceInput = document.createElement('input');
       priceInput.type = 'number'; priceInput.placeholder = '售價'; priceInput.min = '0'; priceInput.step = '1'; priceInput.value = row.price;
-      priceInput.addEventListener('input', function () { row.price = Number(priceInput.value) || 0; });
+      priceInput.addEventListener('input', function () { row.price = Number(priceInput.value) || 0; updateInfo(); });
 
       var delBtn = document.createElement('button');
       delBtn.type = 'button'; delBtn.textContent = '✕'; delBtn.title = '刪除這個尺寸';
@@ -642,7 +732,33 @@
       });
 
       wrap.appendChild(sizeInput); wrap.appendChild(costInput); wrap.appendChild(priceInput); wrap.appendChild(delBtn);
-      el.appendChild(wrap);
+
+      var info = document.createElement('div');
+      info.className = 'extra-row-info';
+
+      function updateInfo() {
+        var suggested = row.multiplier > 0 ? Math.round(row.cost * row.multiplier) : null;
+        var profit = row.price - row.cost;
+        var margin = row.price > 0 ? (profit / row.price * 100) : 0;
+        var cls = 'good';
+        if (profit < 0) cls = 'bad'; else if (margin < 25) cls = 'warn';
+        info.innerHTML =
+          (suggested != null ? '建議售價 NT$' + fmt(suggested) + ' <button type="button" data-action="apply-suggested">套用</button> · ' : '') +
+          '<span class="' + cls + '">淨利 NT$' + fmt(profit) + ' · 淨利率 ' + Math.round(margin) + '%</span>';
+        var applyBtn = info.querySelector('[data-action="apply-suggested"]');
+        if (applyBtn) {
+          applyBtn.addEventListener('click', function () {
+            row.price = suggested;
+            priceInput.value = suggested;
+            updateInfo();
+          });
+        }
+      }
+      updateInfo();
+
+      item.appendChild(wrap);
+      item.appendChild(info);
+      el.appendChild(item);
     });
   }
 
