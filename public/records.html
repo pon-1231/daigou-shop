@@ -29,6 +29,7 @@
 
   .field-error { color: var(--bad); font-size: 12.5px; margin-top: 6px; display: none; }
   .field-error.show { display: block; }
+  .required-mark { color: var(--bad); margin-left: 2px; font-weight: 700; }
 
   .chip.info { background: var(--accent-soft); color: var(--accent); }
 
@@ -224,7 +225,7 @@
   .oc-item .oi-nums { font-family: var(--font-mono); color: var(--ink-soft); white-space: nowrap; }
 
   .oc-totals { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12.5px; }
-  .oc-note { font-size: 12.5px; color: var(--ink-soft); margin-top: 6px; }
+  .oc-note { font-size: 15px; color: var(--bad); font-weight: 600; margin-top: 6px; }
   .oc-actions { display: flex; gap: 6px; margin-top: 10px; }
 
   .oc-history { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); display: flex; flex-direction: column; gap: 10px; }
@@ -294,12 +295,12 @@
         </p>
         <form id="orderForm">
           <div class="two-col">
-            <div class="field"><label>客人名稱</label><input type="text" id="customerName" placeholder="例如：阿美"></div>
-            <div class="field"><label>日期</label><input type="date" id="soldAt"></div>
+            <div class="field"><label>客人名稱<span class="required-mark">*</span></label><input type="text" id="customerName" placeholder="例如：阿美"></div>
+            <div class="field"><label>日期<span class="required-mark">*</span></label><input type="date" id="soldAt"></div>
           </div>
           <div class="two-col">
             <div class="field">
-              <label>訂單狀態</label>
+              <label>訂單狀態<span class="required-mark">*</span></label>
               <select id="orderStatus">
                 <option value="待處理">待處理</option>
                 <option value="已下貨">已下貨</option>
@@ -307,10 +308,10 @@
                 <option value="已完成">已完成</option>
               </select>
             </div>
-            <div class="field"><label>出貨期限<span class="hint">選填</span></label><input type="date" id="shipBy"></div>
+            <div class="field"><label>出貨期限<span class="required-mark">*</span></label><input type="date" id="shipBy"></div>
           </div>
           <div class="field">
-            <label>選商品<span class="hint">點圖片加進這張訂單，可以加好幾樣</span></label>
+            <label>選商品<span class="required-mark">*</span><span class="hint">點圖片加進這張訂單，可以加好幾樣</span></label>
             <input type="text" id="productSearch" placeholder="搜尋商品名稱…" style="margin-bottom:8px;">
             <div class="product-gallery" id="productGallery"><p class="empty-state">還沒有已儲存的商品，可以用下面「手動新增」。</p></div>
             <div class="size-picker" id="sizePicker" style="display:none;">
@@ -1302,6 +1303,26 @@
     var errEl = $('formError');
     errEl.classList.remove('show');
 
+    if (!$('customerName').value.trim()) {
+      errEl.textContent = '請填客人名稱。';
+      errEl.classList.add('show');
+      return;
+    }
+    if (!$('soldAt').value) {
+      errEl.textContent = '請選日期。';
+      errEl.classList.add('show');
+      return;
+    }
+    if (!$('orderStatus').value) {
+      errEl.textContent = '請選訂單狀態。';
+      errEl.classList.add('show');
+      return;
+    }
+    if (!$('shipBy').value) {
+      errEl.textContent = '請填出貨期限。';
+      errEl.classList.add('show');
+      return;
+    }
     if (cart.length === 0) {
       errEl.textContent = '這張訂單還沒有加入任何商品。';
       errEl.classList.add('show');
