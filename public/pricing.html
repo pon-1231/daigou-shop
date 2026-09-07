@@ -113,16 +113,23 @@
   }
   .group-quick-btns button.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
 
-  .variant-list { display: flex; flex-direction: column; gap: 6px; }
-  .variant-row {
-    display: flex; justify-content: space-between; align-items: center; gap: 10px;
-    padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--bg); font-size: 12.5px;
+  .load-siblings-hint { font-size: 12.5px; color: var(--ink-soft); margin-bottom: 8px; }
+  .load-siblings-hint button {
+    font-family: var(--font-body); font-size: 12.5px; color: var(--accent); background: none; border: none;
+    text-decoration: underline; cursor: pointer; padding: 0; font-weight: 600;
   }
-  .variant-row .vr-info { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-  .variant-row button {
-    font-family: var(--font-body); font-size: 11.5px; padding: 4px 10px; border-radius: var(--radius-sm);
-    border: 1px solid var(--accent); background: var(--bg-elevated); color: var(--accent); cursor: pointer; flex-shrink: 0;
+  .extra-row-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+  .extra-row { display: grid; grid-template-columns: 1fr 0.8fr 0.8fr auto; gap: 6px; align-items: center; }
+  .extra-row input {
+    font-size: 12.5px; padding: 7px 10px; border-radius: var(--radius-sm); border: 1px solid var(--line-strong);
+    width: 100%; font-family: var(--font-mono); font-variant-numeric: tabular-nums;
   }
+  .extra-row input[type="text"] { font-family: var(--font-body); }
+  .extra-row button {
+    font-size: 13px; padding: 7px 11px; border-radius: var(--radius-sm); border: 1px solid var(--bad);
+    background: var(--bg-elevated); color: var(--bad); cursor: pointer;
+  }
+  @media (max-width: 480px) { .extra-row { grid-template-columns: 1fr 1fr; } }
 
   .saved-group { margin-bottom: 16px; }
   .saved-group summary {
@@ -211,9 +218,14 @@
           <input type="text" id="productSizes" placeholder="例如：S,M,L,均碼">
         </div>
 
-        <div class="product-name-row" id="sizeVariantsHint" style="display:none;">
-          <label>「<span id="variantsProductName"></span>」已經有的尺寸版本<span class="hint">如果尺寸不同、價錢也不一樣，點「複製新增尺寸」帶入同一批成本欄位，改一下尺寸/成本/售價存成新的一筆就好</span></label>
-          <div class="variant-list" id="variantList"></div>
+        <div class="product-name-row">
+          <label>這個商品的其他尺寸／價錢<span class="hint">如果同一個商品不同尺寸價錢不一樣，按下面「+ 新增一列」把現在算好的成本/售價存成一列，改一下尺寸和金額就好；「加入清單」會一次把全部尺寸一起存檔</span></label>
+          <p class="load-siblings-hint" id="loadSiblingsHint" style="display:none;">
+            「<span id="siblingsProductName"></span>」已經有 <span id="siblingsCount"></span> 筆尺寸資料，
+            <button type="button" id="loadSiblingsBtn">一起載入編輯</button>
+          </p>
+          <div class="extra-row-list" id="extraRowList"></div>
+          <button type="button" class="btn small" id="addExtraRow">+ 用目前輸入的成本，新增一列尺寸</button>
         </div>
 
         <div class="product-name-row">
@@ -357,6 +369,7 @@
   var allSavedItems = [];
   var editingId = null;
   var currentPhotoUrl = null;
+  var extraRows = [];
 
   var savedFx = null;
   try { savedFx = localStorage.getItem('daigou_fx_rate'); } catch (e) {}
@@ -575,48 +588,137 @@
   }
   $('productGroup').addEventListener('input', renderGroupQuickButtons);
 
-  function checkSizeVariants() {
-    var name = $('productName').value.trim();
-    var hintEl = $('sizeVariantsHint');
-    if (!name) { hintEl.style.display = 'none'; return; }
-    var matches = allSavedItems.filter(function (it) {
-      return (it.name || '').trim().toLowerCase() === name.toLowerCase() && it.id !== editingId;
-    });
-    if (matches.length === 0) { hintEl.style.display = 'none'; return; }
-    hintEl.style.display = '';
-    $('variantsProductName').textContent = name;
-    var listEl = $('variantList');
-    listEl.innerHTML = '';
-    matches.forEach(function (it) {
-      var row = document.createElement('div');
-      row.className = 'variant-row';
-      row.innerHTML =
-        '<span class="vr-info">' + escapeHtml(it.sizes || '(無標示尺寸)') + ' · 成本 NT$' + fmt(it.actual_cost) + ' → 售價 NT$' + fmt(it.final_price) + '</span>' +
-        '<button type="button">複製新增尺寸</button>';
-      row.querySelector('button').addEventListener('click', function () { copyAsNewSize(it); });
-      listEl.appendChild(row);
+  /* ---------- 同一個商品名稱、不同尺寸各自的價錢：extraRows ---------- */
+
+  function siblingsOf(name, excludeId) {
+    var n = (name || '').trim().toLowerCase();
+    if (!n) return [];
+    return allSavedItems.filter(function (it) { return (it.name || '').trim().toLowerCase() === n && it.id !== excludeId; });
+  }
+
+  function toExtraRow(it) {
+    return {
+      dbId: it.id, sizes: it.sizes || '', cost: Number(it.actual_cost) || 0, price: Number(it.final_price) || 0,
+      rmbPrice: Number(it.rmb_price) || 0, rmbShip: Number(it.rmb_ship) || 0, fxRate: Number(it.fx_rate) || 4.5,
+      crossShip: Number(it.cross_ship) || 0, packaging: Number(it.packaging) || 0, paymentFee: Number(it.payment_fee) || 0,
+      domesticShip: Number(it.domestic_ship) || 0, multiplier: Number(it.multiplier) || 0
+    };
+  }
+
+  function renderExtraRows() {
+    var el = $('extraRowList');
+    el.innerHTML = '';
+    extraRows.forEach(function (row, idx) {
+      var wrap = document.createElement('div');
+      wrap.className = 'extra-row';
+
+      var sizeInput = document.createElement('input');
+      sizeInput.type = 'text'; sizeInput.placeholder = '尺寸'; sizeInput.value = row.sizes;
+      sizeInput.addEventListener('input', function () { row.sizes = sizeInput.value; });
+
+      var costInput = document.createElement('input');
+      costInput.type = 'number'; costInput.placeholder = '成本'; costInput.min = '0'; costInput.step = '1'; costInput.value = row.cost;
+      costInput.addEventListener('input', function () { row.cost = Number(costInput.value) || 0; });
+
+      var priceInput = document.createElement('input');
+      priceInput.type = 'number'; priceInput.placeholder = '售價'; priceInput.min = '0'; priceInput.step = '1'; priceInput.value = row.price;
+      priceInput.addEventListener('input', function () { row.price = Number(priceInput.value) || 0; });
+
+      var delBtn = document.createElement('button');
+      delBtn.type = 'button'; delBtn.textContent = '✕'; delBtn.title = '刪除這個尺寸';
+      delBtn.addEventListener('click', async function () {
+        if (row.dbId) {
+          delBtn.disabled = true;
+          try {
+            var res = await fetch('/api/priced-items/' + row.dbId, { method: 'DELETE' });
+            if (!res.ok) throw new Error();
+            allSavedItems = allSavedItems.filter(function (x) { return x.id !== row.dbId; });
+            renderSavedList($('searchSaved').value);
+            refreshGroupOptions();
+          } catch (e) { showToast('刪除失敗，請再試一次'); delBtn.disabled = false; return; }
+        }
+        extraRows.splice(idx, 1);
+        renderExtraRows();
+      });
+
+      wrap.appendChild(sizeInput); wrap.appendChild(costInput); wrap.appendChild(priceInput); wrap.appendChild(delBtn);
+      el.appendChild(wrap);
     });
   }
 
-  function copyAsNewSize(tpl) {
-    exitEditMode();
-    var name = tpl.name;
-    fillFormFromItem(tpl);
-    $('productName').value = name;
-    $('productSizes').value = '';
-    manualPrice.value = tpl.manual_price == null ? '' : tpl.manual_price;
-    if (tpl.photo_url) {
-      currentPhotoUrl = tpl.photo_url;
-      $('photoPreview').src = tpl.photo_url;
-      $('photoPreview').style.display = 'block';
-      $('photoHint').textContent = '已上傳，點這裡可以換一張';
-    } else {
-      clearPhoto();
+  function clearExtraRows() {
+    extraRows = [];
+    renderExtraRows();
+  }
+
+  $('addExtraRow').addEventListener('click', function () {
+    extraRows.push({
+      dbId: null, sizes: '', cost: lastState.actualCost, price: lastState.finalPrice,
+      rmbPrice: num('rmbPrice'), rmbShip: num('rmbShip'), fxRate: num('fxRate'),
+      crossShip: num('crossShip'), packaging: num('packaging'), paymentFee: num('paymentFee'),
+      domesticShip: num('domesticShip'), multiplier: parseFloat(slider.value) || 0
+    });
+    renderExtraRows();
+    $('loadSiblingsHint').style.display = 'none';
+    var rows = $('extraRowList').querySelectorAll('.extra-row');
+    var lastRow = rows[rows.length - 1];
+    if (lastRow) lastRow.querySelector('input[type="text"]').focus();
+  });
+
+  function checkSiblings() {
+    var name = $('productName').value.trim();
+    var hintEl = $('loadSiblingsHint');
+    if (!name || extraRows.length > 0) { hintEl.style.display = 'none'; return; }
+    var matches = siblingsOf(name, editingId);
+    if (matches.length === 0) { hintEl.style.display = 'none'; return; }
+    hintEl.style.display = '';
+    $('siblingsProductName').textContent = name;
+    $('siblingsCount').textContent = matches.length;
+  }
+  $('productName').addEventListener('input', checkSiblings);
+
+  $('loadSiblingsBtn').addEventListener('click', function () {
+    var matches = siblingsOf($('productName').value, editingId);
+    extraRows = matches.map(toExtraRow);
+    renderExtraRows();
+    $('loadSiblingsHint').style.display = 'none';
+    showToast('已載入 ' + matches.length + ' 筆尺寸資料，改完記得按「加入清單」一起存檔');
+  });
+
+  function extraRowPayload(row) {
+    var chinaCost = (row.rmbPrice + row.rmbShip) * row.fxRate;
+    var margin = row.price > 0 ? ((row.price - row.cost) / row.price * 100) : 0;
+    return {
+      name: $('productName').value.trim(),
+      sizes: row.sizes.trim(),
+      sortGroup: $('productGroup').value.trim(),
+      categoryKey: currentCategory ? currentCategory.key : '',
+      categoryLabel: currentCategory ? currentCategory.label : '未分類',
+      rmbPrice: row.rmbPrice, rmbShip: row.rmbShip, fxRate: row.fxRate,
+      crossShip: row.crossShip, packaging: row.packaging, paymentFee: row.paymentFee,
+      domesticShip: row.domesticShip, multiplier: row.multiplier,
+      manualPrice: row.price,
+      chinaCost: chinaCost, actualCost: row.cost, finalPrice: row.price,
+      profit: row.price - row.cost, margin: margin,
+      photoUrl: currentPhotoUrl
+    };
+  }
+
+  async function saveExtraRows() {
+    for (var i = 0; i < extraRows.length; i++) {
+      var row = extraRows[i];
+      var payload = extraRowPayload(row);
+      var res = await fetch(row.dbId ? '/api/priced-items/' + row.dbId : '/api/priced-items', {
+        method: row.dbId ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error();
+      var saved = await res.json();
+      row.dbId = saved.id;
+      var idx = allSavedItems.findIndex(function (x) { return x.id === saved.id; });
+      if (idx !== -1) allSavedItems[idx] = saved; else allSavedItems.unshift(saved);
     }
-    recalc();
-    $('productSizes').focus();
-    showToast('已帶入成本欄位，改一下尺寸／成本／售價後按「加入清單」存成新的一筆');
-    checkSizeVariants();
   }
 
   function fillFormFromItem(it) {
@@ -642,7 +744,8 @@
     exitEditMode();
     clearPhoto();
     fillFormFromItem(it);
-    checkSizeVariants();
+    clearExtraRows();
+    checkSiblings();
   }
 
   function editItem(it) {
@@ -659,7 +762,9 @@
     $('editBannerName').textContent = it.name || '未命名商品';
     $('editBanner').style.display = '';
     $('saveItem').textContent = '💾 儲存修改';
-    checkSizeVariants();
+    extraRows = siblingsOf(it.name, it.id).map(toExtraRow);
+    renderExtraRows();
+    $('loadSiblingsHint').style.display = 'none';
   }
 
   function exitEditMode() {
@@ -668,8 +773,7 @@
     $('saveItem').textContent = '💾 加入清單';
   }
 
-  $('cancelEdit').addEventListener('click', function () { exitEditMode(); checkSizeVariants(); });
-  $('productName').addEventListener('input', checkSizeVariants);
+  $('cancelEdit').addEventListener('click', function () { exitEditMode(); clearExtraRows(); checkSiblings(); });
 
   fields.forEach(function (id) {
     $(id).addEventListener('input', function () {
@@ -697,7 +801,8 @@
     $('crossShip').value = 15; $('packaging').value = 5; $('paymentFee').value = 10; $('domesticShip').value = 60;
     manualPrice.value = '';
     setCategory(catDefs[1]);
-    checkSizeVariants();
+    clearExtraRows();
+    checkSiblings();
     renderGroupQuickButtons();
   });
 
@@ -715,7 +820,8 @@
     slider.min = 1.4; slider.max = 1.6; slider.value = 1.5;
     $('sliderMinLabel').textContent = '1.40×'; $('sliderMaxLabel').textContent = '1.60×';
     recalc();
-    checkSizeVariants();
+    clearExtraRows();
+    checkSiblings();
     renderGroupQuickButtons();
   });
 
@@ -750,18 +856,23 @@
       if (isEditing) {
         var idx = allSavedItems.findIndex(function (x) { return x.id === saved.id; });
         if (idx !== -1) allSavedItems[idx] = saved;
-        exitEditMode();
-        showToast('已更新');
       } else {
         allSavedItems.unshift(saved);
-        showToast('已加入清單');
       }
+
+      var extraCount = extraRows.length;
+      if (extraCount > 0) { await saveExtraRows(); }
+
+      if (isEditing) { exitEditMode(); }
+      showToast(extraCount > 0 ? '已一次存好 ' + (1 + extraCount) + ' 個尺寸' : (isEditing ? '已更新' : '已加入清單'));
+
+      clearExtraRows();
       renderSavedList($('searchSaved').value);
       refreshGroupOptions();
-      checkSizeVariants();
+      checkSiblings();
       renderGroupQuickButtons();
     } catch (e) {
-      showToast(isEditing ? '更新失敗，請檢查網路後再試一次' : '儲存失敗，請檢查網路後再試一次');
+      showToast('儲存失敗，請檢查網路後再試一次，剛剛存成功的部分不會重複存');
     } finally {
       btn.disabled = false;
       if (!isEditing) btn.textContent = original;
@@ -780,7 +891,7 @@
     allSavedItems = items;
     renderSavedList('');
     refreshGroupOptions();
-    checkSizeVariants();
+    checkSiblings();
   }).catch(function () {
     $('savedList').innerHTML = '<p class="empty-state">清單載入失敗，請重新整理頁面再試一次。</p>';
   });
