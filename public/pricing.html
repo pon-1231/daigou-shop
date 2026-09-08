@@ -152,7 +152,12 @@
   .saved-list { display: flex; flex-direction: column; gap: 8px; }
   .saved-item { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--bg); flex-wrap: wrap; }
   .si-name { font-size: 14px; font-weight: 600; display: flex; align-items: center; }
-  .si-num { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-soft); font-weight: 700; margin-right: 8px; }
+  .si-num-input {
+    font-family: var(--font-mono); font-size: 11.5px; width: 42px; padding: 2px 4px; margin-right: 8px;
+    border: 1px solid var(--line-strong); border-radius: 4px; background: var(--bg); color: var(--ink-soft);
+    text-align: center; flex-shrink: 0;
+  }
+  .si-num-input:focus { border-color: var(--accent); color: var(--ink); outline: none; }
   .si-cat-badge { font-size: 10.5px; padding: 2px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); margin-left: 8px; font-weight: 600; }
   .si-sub { font-size: 12px; color: var(--ink-soft); margin-top: 4px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
   .si-actions { display: flex; gap: 6px; flex-shrink: 0; }
@@ -510,9 +515,35 @@
     return res.json();
   }
 
-  function parseLeadingNumber(name) {
-    var m = /^\s*(\d+)/.exec(name || '');
-    return m ? parseInt(m[1], 10) : null;
+  function bindNumInput(items) {
+    var input = document.createElement('input');
+    input.type = 'number';
+    input.className = 'si-num-input';
+    input.value = items[0].item_no != null ? items[0].item_no : '';
+    input.title = '編號（同一個分類群組內各自獨立）';
+
+    var save = async function () {
+      var val = input.value.trim();
+      try {
+        for (var i = 0; i < items.length; i++) {
+          var res = await fetch('/api/priced-items/' + items[i].id + '/item-no', {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ itemNo: val })
+          });
+          if (!res.ok) throw new Error();
+          var saved = await res.json();
+          var idx = allSavedItems.findIndex(function (x) { return x.id === saved.id; });
+          if (idx !== -1) allSavedItems[idx] = saved;
+        }
+        renderSavedList($('searchSaved').value);
+      } catch (err) {
+        showToast('編號更新失敗，請再試一次');
+      }
+    };
+    input.addEventListener('click', function (ev) { ev.preventDefault(); ev.stopPropagation(); });
+    input.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') input.blur(); });
+    input.addEventListener('blur', save);
+    return input;
   }
 
   function buildSavedItemRow(it) {
@@ -522,11 +553,10 @@
     var thumbHtml = it.photo_url
       ? '<img class="si-thumb" src="' + escapeHtml(it.photo_url) + '" alt="">'
       : '';
-    var leadingNo = parseLeadingNumber(it.name);
     row.innerHTML =
       thumbHtml +
       '<div class="si-text">' +
-        '<div class="si-name">' + (leadingNo != null ? '<span class="si-num">#' + leadingNo + '</span>' : '') + escapeHtml(it.name || '未命名商品') + '<span class="si-cat-badge">' + escapeHtml(it.category_label) + '</span>' + (it.sizes ? '<span class="si-cat-badge">' + escapeHtml(it.sizes) + '</span>' : '') + '</div>' +
+        '<div class="si-name">' + escapeHtml(it.name || '未命名商品') + '<span class="si-cat-badge">' + escapeHtml(it.category_label) + '</span>' + (it.sizes ? '<span class="si-cat-badge">' + escapeHtml(it.sizes) + '</span>' : '') + '</div>' +
         '<div class="si-sub">實際成本 NT$' + fmt(it.actual_cost) + ' → 售價 NT$' + fmt(it.final_price) + ' · 淨利率 ' + Math.round(it.margin) + '% · ' + dateStr + '</div>' +
       '</div>' +
       '<div class="si-actions">' +
@@ -534,6 +564,9 @@
         '<button type="button" class="btn small" data-action="apply">套用</button>' +
         '<button type="button" class="btn small ghost" data-action="delete">刪除</button>' +
       '</div>';
+
+    var nameEl = row.querySelector('.si-name');
+    nameEl.insertBefore(bindNumInput([it]), nameEl.firstChild);
 
     row.querySelector('[data-action="edit"]').addEventListener('click', function () { editItem(it); });
     row.querySelector('[data-action="apply"]').addEventListener('click', function () { applyItem(it); });
@@ -582,14 +615,16 @@
       '</div>';
     }).join('');
 
-    var leadingNo = parseLeadingNumber(first.name);
     wrap.innerHTML =
       '<summary class="si-summary">' +
         thumbHtml +
-        '<span class="si-name">' + (leadingNo != null ? '<span class="si-num">#' + leadingNo + '</span>' : '') + escapeHtml(first.name || '未命名商品') + '<span class="si-cat-badge">' + escapeHtml(first.category_label) + '</span><span class="count-badge">' + items.length + ' 種尺寸</span></span>' +
+        '<span class="si-name">' + escapeHtml(first.name || '未命名商品') + '<span class="si-cat-badge">' + escapeHtml(first.category_label) + '</span><span class="count-badge">' + items.length + ' 種尺寸</span></span>' +
         '<span class="si-toggle-icon">▾</span>' +
       '</summary>' +
       '<div class="si-size-lines">' + sizeLinesHtml + '</div>';
+
+    var nameEl = wrap.querySelector('.si-name');
+    nameEl.insertBefore(bindNumInput(items), nameEl.firstChild);
 
     items.forEach(function (it) {
       var lineEl = wrap.querySelector('.si-size-line[data-id="' + it.id + '"]');
@@ -614,6 +649,15 @@
     groupByName(items).forEach(function (nameItems) { container.appendChild(buildSavedProductCard(nameItems)); });
   }
 
+  function sortByItemNo(items) {
+    return items.slice().sort(function (a, b) {
+      var an = a.item_no != null ? a.item_no : Infinity;
+      var bn = b.item_no != null ? b.item_no : Infinity;
+      if (an !== bn) return an - bn;
+      return new Date(a.created_at) - new Date(b.created_at);
+    });
+  }
+
   function groupByCategory(items) {
     var groups = {};
     var order = [];
@@ -627,21 +671,13 @@
       if (b === '未分類') return -1;
       return a.localeCompare(b, 'zh-Hant');
     });
-    return order.map(function (g) { return { group: g, items: groups[g] }; });
+    return order.map(function (g) { return { group: g, items: sortByItemNo(groups[g]) }; });
   }
 
   function renderSavedList(filter) {
     filter = (filter || '').trim().toLowerCase();
     $('savedCount').textContent = allSavedItems.length;
     var items = filter ? allSavedItems.filter(function (it) { return (it.name || '').toLowerCase().indexOf(filter) !== -1; }) : allSavedItems;
-    items = items.slice().sort(function (a, b) {
-      var an = parseLeadingNumber(a.name);
-      var bn = parseLeadingNumber(b.name);
-      an = an != null ? an : Infinity;
-      bn = bn != null ? bn : Infinity;
-      if (an !== bn) return an - bn;
-      return new Date(a.created_at) - new Date(b.created_at);
-    });
 
     var listEl = $('savedList');
     listEl.innerHTML = '';

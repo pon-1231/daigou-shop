@@ -40,6 +40,16 @@ function buildRow(body) {
 router.post('/', async (req, res) => {
   if (!supabase) return res.status(500).json({ error: 'Supabase 尚未設定' });
   const row = buildRow(req.body || {});
+
+  let maxQuery = supabase
+    .from('priced_items')
+    .select('item_no')
+    .order('item_no', { ascending: false, nullsFirst: false })
+    .limit(1);
+  maxQuery = row.sort_group ? maxQuery.eq('sort_group', row.sort_group) : maxQuery.is('sort_group', null);
+  const { data: maxRow } = await maxQuery.maybeSingle();
+  row.item_no = (maxRow && maxRow.item_no ? maxRow.item_no : 0) + 1;
+
   const { data, error } = await supabase.from('priced_items').insert(row).select().single();
   if (error) return res.status(500).json({ error: error.message });
   res.status(201).json(data);
@@ -51,6 +61,24 @@ router.put('/:id', async (req, res) => {
   const { data, error } = await supabase
     .from('priced_items')
     .update(row)
+    .eq('id', req.params.id)
+    .select()
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+router.patch('/:id/item-no', async (req, res) => {
+  if (!supabase) return res.status(500).json({ error: 'Supabase 尚未設定' });
+  const raw = req.body ? req.body.itemNo : undefined;
+  const parsed = raw === '' || raw == null ? null : Number(raw);
+  if (parsed !== null && !Number.isFinite(parsed)) {
+    return res.status(400).json({ error: '編號要是數字' });
+  }
+  const itemNo = parsed === null ? null : Math.round(parsed);
+  const { data, error } = await supabase
+    .from('priced_items')
+    .update({ item_no: itemNo })
     .eq('id', req.params.id)
     .select()
     .single();

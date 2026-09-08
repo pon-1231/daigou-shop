@@ -43,6 +43,17 @@ set item_no = numbered.rn
 from numbered
 where p.id = numbered.id;
 
+-- 1d. 編號改成「每個分類群組各自獨立」，重新依分類群組(sort_group)分開編號 1,2,3...
+--     這行可以重複執行，每次都會依目前的分類重新排一次
+with numbered as (
+  select id, row_number() over (partition by coalesce(sort_group, '') order by created_at asc) as rn
+  from priced_items
+)
+update priced_items p
+set item_no = numbered.rn
+from numbered
+where p.id = numbered.id;
+
 -- 2.（舊版，保留給還沒升級的人參考，新安裝可以跳過）單一商品的銷售紀錄
 create table if not exists sales_records (
   id uuid primary key default gen_random_uuid(),
