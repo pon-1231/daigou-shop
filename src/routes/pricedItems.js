@@ -33,6 +33,7 @@ function buildRow(body) {
     margin: Number(body.margin) || 0,
     photo_url: body.photoUrl || null,
     sizes: body.sizes ? String(body.sizes).slice(0, 200) : null,
+    color: body.color ? String(body.color).slice(0, 100) : null,
     sort_group: body.sortGroup ? String(body.sortGroup).slice(0, 50) : null,
     item_no: body.itemNo === '' || body.itemNo == null ? null : Math.round(Number(body.itemNo))
   };

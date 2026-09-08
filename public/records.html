@@ -461,6 +461,20 @@
     return order.map(function (name) { return { name: name, variants: byName[name] }; });
   }
 
+  function pickerOptionLabel(size, color) {
+    var parts = [];
+    if (size) parts.push(size);
+    if (color) parts.push('🎨' + color);
+    return parts.length ? parts.join(' ') : '(無標示尺寸)';
+  }
+
+  function combineSizeColor(size, color) {
+    var parts = [];
+    if (size) parts.push(size);
+    if (color) parts.push(color);
+    return parts.join('・');
+  }
+
   function groupOptions(group) {
     var options = [];
     group.variants.forEach(function (p) {
@@ -592,7 +606,7 @@
       var selectBtn = document.createElement('button');
       selectBtn.type = 'button';
       selectBtn.className = 'sp-option-select';
-      selectBtn.textContent = (opt.size || '(無標示尺寸)') + ' · NT$' + fmt(opt.product.final_price);
+      selectBtn.textContent = pickerOptionLabel(opt.size, opt.product.color) + ' · NT$' + fmt(opt.product.final_price);
       selectBtn.addEventListener('click', function () {
         addProductToCart(opt.product, opt.size);
         closeSizePicker();
@@ -674,7 +688,9 @@
     return {
       name: currentPickerName,
       sizes: sizesValue,
+      color: tpl.color || '',
       sortGroup: tpl.sort_group || '',
+      itemNo: tpl.item_no != null ? tpl.item_no : '',
       categoryKey: tpl.category_key || '',
       categoryLabel: tpl.category_label || '未分類',
       rmbPrice: tpl.rmb_price || 0,
@@ -783,7 +799,7 @@
     cart.push({
       productId: product.id,
       itemName: product.name || '未命名商品',
-      size: size || '',
+      size: combineSizeColor(size, product.color),
       photoUrl: product.photo_url || null,
       cost: Number(product.actual_cost) || 0,
       soldPrice: Number(product.final_price) || 0

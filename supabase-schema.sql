@@ -31,6 +31,7 @@ alter table priced_items add column if not exists photo_url text;
 alter table priced_items add column if not exists sizes text;
 alter table priced_items add column if not exists sort_group text;
 alter table priced_items add column if not exists item_no integer;
+alter table priced_items add column if not exists color text;
 
 -- 1c. 把還沒有編號的舊資料，依照建立時間先補上 1,2,3...（之後可以在畫面上自己改）
 with numbered as (
