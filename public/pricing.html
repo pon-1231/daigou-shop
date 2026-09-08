@@ -152,7 +152,14 @@
   .saved-list { display: flex; flex-direction: column; gap: 8px; }
   .saved-item { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--bg); flex-wrap: wrap; }
   .si-name { font-size: 14px; font-weight: 600; display: flex; align-items: center; }
-  .si-num { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-soft); font-weight: 700; margin-right: 8px; }
+  .si-num {
+    font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-soft); font-weight: 700; margin-right: 8px;
+    cursor: pointer; border-bottom: 1px dashed var(--line-strong);
+  }
+  .si-num-edit {
+    font-family: var(--font-mono); font-size: 11.5px; width: 48px; padding: 1px 4px; margin-right: 8px;
+    border: 1px solid var(--accent); border-radius: 4px;
+  }
   .si-cat-badge { font-size: 10.5px; padding: 2px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); margin-left: 8px; font-weight: 600; }
   .si-sub { font-size: 12px; color: var(--ink-soft); margin-top: 4px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
   .si-actions { display: flex; gap: 6px; flex-shrink: 0; }
@@ -510,7 +517,53 @@
     return res.json();
   }
 
-  function buildSavedItemRow(it, num) {
+  function bindNumBadge(wrapEl, items) {
+    var badge = wrapEl.querySelector('.si-num');
+    if (!badge) return;
+    badge.title = '點一下可以改編號';
+    badge.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var current = items[0].item_no != null ? items[0].item_no : '';
+      var input = document.createElement('input');
+      input.type = 'number';
+      input.className = 'si-num-edit';
+      input.value = current;
+      badge.replaceWith(input);
+      input.focus();
+      input.select();
+
+      var done = false;
+      var save = async function () {
+        if (done) return;
+        done = true;
+        var val = input.value.trim();
+        try {
+          for (var i = 0; i < items.length; i++) {
+            var res = await fetch('/api/priced-items/' + items[i].id + '/item-no', {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ itemNo: val })
+            });
+            if (!res.ok) throw new Error();
+            var saved = await res.json();
+            var idx = allSavedItems.findIndex(function (x) { return x.id === saved.id; });
+            if (idx !== -1) allSavedItems[idx] = saved;
+          }
+        } catch (err) {
+          showToast('編號更新失敗，請再試一次');
+        }
+        renderSavedList($('searchSaved').value);
+      };
+      input.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter') { input.blur(); }
+        if (ev.key === 'Escape') { done = true; renderSavedList($('searchSaved').value); }
+      });
+      input.addEventListener('blur', save);
+      input.addEventListener('click', function (ev) { ev.stopPropagation(); });
+    });
+  }
+
+  function buildSavedItemRow(it) {
     var row = document.createElement('div');
     row.className = 'saved-item';
     var dateStr = new Date(it.created_at).toLocaleDateString('zh-Hant-TW');
@@ -520,7 +573,7 @@
     row.innerHTML =
       thumbHtml +
       '<div class="si-text">' +
-        '<div class="si-name"><span class="si-num">#' + num + '</span>' + escapeHtml(it.name || '未命名商品') + '<span class="si-cat-badge">' + escapeHtml(it.category_label) + '</span>' + (it.sizes ? '<span class="si-cat-badge">' + escapeHtml(it.sizes) + '</span>' : '') + '</div>' +
+        '<div class="si-name"><span class="si-num">#' + (it.item_no != null ? it.item_no : '?') + '</span>' + escapeHtml(it.name || '未命名商品') + '<span class="si-cat-badge">' + escapeHtml(it.category_label) + '</span>' + (it.sizes ? '<span class="si-cat-badge">' + escapeHtml(it.sizes) + '</span>' : '') + '</div>' +
         '<div class="si-sub">實際成本 NT$' + fmt(it.actual_cost) + ' → 售價 NT$' + fmt(it.final_price) + ' · 淨利率 ' + Math.round(it.margin) + '% · ' + dateStr + '</div>' +
       '</div>' +
       '<div class="si-actions">' +
@@ -541,6 +594,7 @@
         showToast('已刪除');
       } catch (e) { showToast('刪除失敗，請再試一次'); }
     });
+    bindNumBadge(row, [it]);
     return row;
   }
 
@@ -555,8 +609,8 @@
     return order.map(function (n) { return byName[n]; });
   }
 
-  function buildSavedProductCard(items, num) {
-    if (items.length === 1) return buildSavedItemRow(items[0], num);
+  function buildSavedProductCard(items) {
+    if (items.length === 1) return buildSavedItemRow(items[0]);
 
     var first = items[0];
     var wrap = document.createElement('details');
@@ -579,7 +633,7 @@
     wrap.innerHTML =
       '<summary class="si-summary">' +
         thumbHtml +
-        '<span class="si-name"><span class="si-num">#' + num + '</span>' + escapeHtml(first.name || '未命名商品') + '<span class="si-cat-badge">' + escapeHtml(first.category_label) + '</span><span class="count-badge">' + items.length + ' 種尺寸</span></span>' +
+        '<span class="si-name"><span class="si-num">#' + (first.item_no != null ? first.item_no : '?') + '</span>' + escapeHtml(first.name || '未命名商品') + '<span class="si-cat-badge">' + escapeHtml(first.category_label) + '</span><span class="count-badge">' + items.length + ' 種尺寸</span></span>' +
         '<span class="si-toggle-icon">▾</span>' +
       '</summary>' +
       '<div class="si-size-lines">' + sizeLinesHtml + '</div>';
@@ -600,14 +654,12 @@
       });
     });
 
+    bindNumBadge(wrap, items);
     return wrap;
   }
 
-  function appendItemsGrouped(container, items, counter) {
-    groupByName(items).forEach(function (nameItems) {
-      counter.n += 1;
-      container.appendChild(buildSavedProductCard(nameItems, counter.n));
-    });
+  function appendItemsGrouped(container, items) {
+    groupByName(items).forEach(function (nameItems) { container.appendChild(buildSavedProductCard(nameItems)); });
   }
 
   function groupByCategory(items) {
@@ -630,7 +682,12 @@
     filter = (filter || '').trim().toLowerCase();
     $('savedCount').textContent = allSavedItems.length;
     var items = filter ? allSavedItems.filter(function (it) { return (it.name || '').toLowerCase().indexOf(filter) !== -1; }) : allSavedItems;
-    items = items.slice().sort(function (a, b) { return new Date(a.created_at) - new Date(b.created_at); });
+    items = items.slice().sort(function (a, b) {
+      var an = a.item_no != null ? a.item_no : Infinity;
+      var bn = b.item_no != null ? b.item_no : Infinity;
+      if (an !== bn) return an - bn;
+      return new Date(a.created_at) - new Date(b.created_at);
+    });
 
     var listEl = $('savedList');
     listEl.innerHTML = '';
@@ -640,12 +697,11 @@
       return;
     }
 
-    var counter = { n: 0 };
     var groups = groupByCategory(items);
     var onlyUngrouped = groups.length === 1 && groups[0].group === '未分類';
 
     if (onlyUngrouped) {
-      appendItemsGrouped(listEl, groups[0].items, counter);
+      appendItemsGrouped(listEl, groups[0].items);
       return;
     }
 
@@ -658,7 +714,7 @@
       details.appendChild(summary);
       var innerList = document.createElement('div');
       innerList.className = 'saved-list';
-      appendItemsGrouped(innerList, g.items, counter);
+      appendItemsGrouped(innerList, g.items);
       details.appendChild(innerList);
       listEl.appendChild(details);
     });

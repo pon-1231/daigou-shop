@@ -30,6 +30,18 @@ create table if not exists priced_items (
 alter table priced_items add column if not exists photo_url text;
 alter table priced_items add column if not exists sizes text;
 alter table priced_items add column if not exists sort_group text;
+alter table priced_items add column if not exists item_no integer;
+
+-- 1c. 把還沒有編號的舊資料，依照建立時間先補上 1,2,3...（之後可以在畫面上自己改）
+with numbered as (
+  select id, row_number() over (order by created_at asc) as rn
+  from priced_items
+  where item_no is null
+)
+update priced_items p
+set item_no = numbered.rn
+from numbered
+where p.id = numbered.id;
 
 -- 2.（舊版，保留給還沒升級的人參考，新安裝可以跳過）單一商品的銷售紀錄
 create table if not exists sales_records (
