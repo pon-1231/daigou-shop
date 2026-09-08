@@ -113,6 +113,11 @@
   }
   .group-quick-btns button.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
 
+  .item-no-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .item-no-row label { margin: 0; font-size: 13px; font-weight: 600; flex-shrink: 0; }
+  .item-no-row input { width: 72px; flex: 0 0 auto; }
+  .item-no-row .hint { margin: 0; font-size: 12px; color: var(--ink-soft); }
+
   .load-siblings-hint { font-size: 12.5px; color: var(--ink-soft); margin-bottom: 8px; }
   .load-siblings-hint button {
     font-family: var(--font-body); font-size: 12.5px; color: var(--accent); background: none; border: none;
@@ -271,6 +276,11 @@
           <div class="group-quick-btns" id="groupQuickBtns"></div>
           <input type="text" id="productGroup" list="groupOptions" placeholder="例如：A">
           <datalist id="groupOptions"></datalist>
+          <div class="item-no-row">
+            <label for="productItemNo">編號</label>
+            <input type="number" id="productItemNo" placeholder="自動">
+            <span class="hint">選填，同一個分類群組內各自獨立排序，留空會自動抓這個分類目前最大編號 +1</span>
+          </div>
         </div>
 
         <div class="product-name-row">
@@ -868,6 +878,7 @@
       name: $('productName').value.trim(),
       sizes: row.sizes.trim(),
       sortGroup: $('productGroup').value.trim(),
+      itemNo: $('productItemNo').value.trim(),
       categoryKey: currentCategory ? currentCategory.key : '',
       categoryLabel: currentCategory ? currentCategory.label : '未分類',
       rmbPrice: row.rmbPrice, rmbShip: row.rmbShip, fxRate: row.fxRate,
@@ -901,6 +912,7 @@
     $('productName').value = it.name || '';
     $('productSizes').value = it.sizes || '';
     $('productGroup').value = it.sort_group || '';
+    $('productItemNo').value = it.item_no != null ? it.item_no : '';
     $('rmbPrice').value = it.rmb_price;
     $('rmbShip').value = it.rmb_ship;
     $('fxRate').value = it.fx_rate;
@@ -920,6 +932,7 @@
     exitEditMode();
     clearPhoto();
     fillFormFromItem(it);
+    $('productItemNo').value = '';
     clearExtraRows();
     checkSiblings();
   }
@@ -973,6 +986,7 @@
     $('productName').value = '範例商品';
     $('productSizes').value = '';
     $('productGroup').value = '';
+    $('productItemNo').value = '';
     $('rmbPrice').value = 20; $('rmbShip').value = 0; $('fxRate').value = 4.5;
     $('crossShip').value = 15; $('packaging').value = 5; $('paymentFee').value = 10; $('domesticShip').value = 60;
     manualPrice.value = '';
@@ -990,6 +1004,7 @@
     $('productName').value = '';
     $('productSizes').value = '';
     $('productGroup').value = '';
+    $('productItemNo').value = '';
     manualPrice.value = '';
     currentCategory = null;
     catDefs.forEach(function (d) { d.el.classList.remove('active'); });
@@ -1006,6 +1021,7 @@
       name: $('productName').value.trim(),
       sizes: $('productSizes').value.trim(),
       sortGroup: $('productGroup').value.trim(),
+      itemNo: $('productItemNo').value.trim(),
       categoryKey: currentCategory ? currentCategory.key : '',
       categoryLabel: currentCategory ? currentCategory.label : '未分類',
       rmbPrice: num('rmbPrice'), rmbShip: num('rmbShip'), fxRate: num('fxRate'),

@@ -33,22 +33,28 @@ function buildRow(body) {
     margin: Number(body.margin) || 0,
     photo_url: body.photoUrl || null,
     sizes: body.sizes ? String(body.sizes).slice(0, 200) : null,
-    sort_group: body.sortGroup ? String(body.sortGroup).slice(0, 50) : null
+    sort_group: body.sortGroup ? String(body.sortGroup).slice(0, 50) : null,
+    item_no: body.itemNo === '' || body.itemNo == null ? null : Math.round(Number(body.itemNo))
   };
 }
 
-router.post('/', async (req, res) => {
-  if (!supabase) return res.status(500).json({ error: 'Supabase 尚未設定' });
-  const row = buildRow(req.body || {});
-
+async function nextItemNoInGroup(supabase, sortGroup) {
   let maxQuery = supabase
     .from('priced_items')
     .select('item_no')
     .order('item_no', { ascending: false, nullsFirst: false })
     .limit(1);
-  maxQuery = row.sort_group ? maxQuery.eq('sort_group', row.sort_group) : maxQuery.is('sort_group', null);
+  maxQuery = sortGroup ? maxQuery.eq('sort_group', sortGroup) : maxQuery.is('sort_group', null);
   const { data: maxRow } = await maxQuery.maybeSingle();
-  row.item_no = (maxRow && maxRow.item_no ? maxRow.item_no : 0) + 1;
+  return (maxRow && maxRow.item_no ? maxRow.item_no : 0) + 1;
+}
+
+router.post('/', async (req, res) => {
+  if (!supabase) return res.status(500).json({ error: 'Supabase 尚未設定' });
+  const row = buildRow(req.body || {});
+  if (row.item_no == null) {
+    row.item_no = await nextItemNoInGroup(supabase, row.sort_group);
+  }
 
   const { data, error } = await supabase.from('priced_items').insert(row).select().single();
   if (error) return res.status(500).json({ error: error.message });

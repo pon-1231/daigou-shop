@@ -501,6 +501,15 @@
     return card;
   }
 
+  function sortByItemNo(products) {
+    return products.slice().sort(function (a, b) {
+      var an = a.item_no != null ? a.item_no : Infinity;
+      var bn = b.item_no != null ? b.item_no : Infinity;
+      if (an !== bn) return an - bn;
+      return new Date(a.created_at) - new Date(b.created_at);
+    });
+  }
+
   function groupBySortGroup(products) {
     var groups = {};
     var order = [];
@@ -514,7 +523,7 @@
       if (b === '未分類') return -1;
       return a.localeCompare(b, 'zh-Hant');
     });
-    return order.map(function (g) { return { group: g, products: groups[g] }; });
+    return order.map(function (g) { return { group: g, products: sortByItemNo(groups[g]) }; });
   }
 
   function renderGallery() {
