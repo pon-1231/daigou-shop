@@ -32,6 +32,7 @@ alter table priced_items add column if not exists sizes text;
 alter table priced_items add column if not exists sort_group text;
 alter table priced_items add column if not exists item_no integer;
 alter table priced_items add column if not exists color text;
+alter table priced_items add column if not exists deleted_at timestamptz;
 
 -- 1c. 把還沒有編號的舊資料，依照建立時間先補上 1,2,3...（之後可以在畫面上自己改）
 with numbered as (
@@ -88,6 +89,7 @@ create table if not exists orders (
 
 -- 3b. 如果 orders 表已經建立過，單獨執行這行加「狀態最後更新時間」欄位：
 alter table orders add column if not exists status_updated_at timestamptz not null default now();
+alter table orders add column if not exists deleted_at timestamptz;
 
 -- 4. 訂單裡的每一樣商品
 create table if not exists order_items (

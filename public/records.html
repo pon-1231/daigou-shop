@@ -239,6 +239,20 @@
   .oh-entry { font-size: 12px; background: var(--bg); border-radius: var(--radius-sm); padding: 8px 10px; }
   .oh-time { font-family: var(--font-mono); font-size: 11px; color: var(--ink-soft); margin-bottom: 4px; font-weight: 600; }
   .oh-line { color: var(--ink-soft); margin-top: 2px; }
+
+  .trash-section { margin-top: 16px; }
+  .trash-summary { cursor: pointer; display: flex; align-items: center; gap: 4px; font-weight: 700; font-size: 15px; list-style: none; outline: none; }
+  .trash-summary::-webkit-details-marker { display: none; }
+  .trash-pad { padding-top: 0; }
+  .trash-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+  .trash-item {
+    display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 14px;
+    border: 1px dashed var(--line-strong); border-radius: var(--radius-sm); background: var(--bg); flex-wrap: wrap;
+  }
+  .trash-item .ti-text { flex: 1; min-width: 0; }
+  .trash-item .ti-name { font-size: 13.5px; font-weight: 600; color: var(--ink-soft); }
+  .trash-item .ti-sub { font-size: 11.5px; color: var(--ink-soft); margin-top: 2px; font-family: var(--font-mono); }
+  .trash-item .ti-actions { display: flex; gap: 6px; flex-shrink: 0; }
 </style>
 </head>
 <body>
@@ -397,6 +411,14 @@
       <div class="order-list" id="orderList"><p class="empty-state">載入中…</p></div>
     </section>
   </div>
+
+  <details class="panel trash-section" id="trashSection">
+    <summary class="panel-pad trash-summary">🗑️ 最近刪除的訂單<span class="count-badge" id="trashCount">0</span></summary>
+    <div class="panel-pad trash-pad">
+      <p class="hint">刪除的訂單會留在這裡，除非按「永久刪除」，不然不會真的消失，可以隨時還原。</p>
+      <div class="trash-list" id="trashList"><p class="empty-state">載入中…</p></div>
+    </div>
+  </details>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -428,6 +450,61 @@
     if (isNaN(d.getTime())) return '';
     return d.toLocaleDateString('zh-Hant-TW') + ' ' + d.toLocaleTimeString('zh-Hant-TW', { hour: '2-digit', minute: '2-digit' });
   }
+
+  function renderTrashList(orders) {
+    $('trashCount').textContent = orders.length;
+    var el = $('trashList');
+    el.innerHTML = '';
+    if (orders.length === 0) {
+      el.innerHTML = '<p class="empty-state">目前沒有刪除的訂單。</p>';
+      return;
+    }
+    orders.forEach(function (o) {
+      var itemsSummary = (o.order_items || []).map(function (it) { return it.item_name; }).join('、');
+      var row = document.createElement('div');
+      row.className = 'trash-item';
+      row.innerHTML =
+        '<div class="ti-text">' +
+          '<div class="ti-name">' + escapeHtml(o.customer_name || '未填客人名稱') + ' · ' + escapeHtml(o.sold_at || '') + (itemsSummary ? ' · ' + escapeHtml(itemsSummary) : '') + '</div>' +
+          '<div class="ti-sub">刪除於 ' + formatDateTime(o.deleted_at) + '</div>' +
+        '</div>' +
+        '<div class="ti-actions">' +
+          '<button type="button" class="btn small" data-action="restore">還原</button>' +
+          '<button type="button" class="btn small ghost" data-action="purge">永久刪除</button>' +
+        '</div>';
+      row.querySelector('[data-action="restore"]').addEventListener('click', async function () {
+        try {
+          var res = await fetch('/api/orders/' + o.id + '/restore', { method: 'POST' });
+          if (!res.ok) throw new Error();
+          var restored = await res.json();
+          allOrders.unshift(restored);
+          renderAll();
+          loadTrash();
+          showToast('已還原');
+        } catch (e) { showToast('還原失敗，請再試一次'); }
+      });
+      row.querySelector('[data-action="purge"]').addEventListener('click', async function () {
+        try {
+          var res = await fetch('/api/orders/' + o.id + '/permanent', { method: 'DELETE' });
+          if (!res.ok) throw new Error();
+          loadTrash();
+          showToast('已永久刪除');
+        } catch (e) { showToast('刪除失敗，請再試一次'); }
+      });
+      el.appendChild(row);
+    });
+  }
+
+  async function loadTrash() {
+    try {
+      var res = await fetch('/api/orders/trash');
+      if (!res.ok) throw new Error();
+      renderTrashList(await res.json());
+    } catch (e) {
+      $('trashList').innerHTML = '<p class="empty-state">載入失敗，請重新整理頁面再試一次。</p>';
+    }
+  }
+  $('trashSection').addEventListener('toggle', function () { if (this.open) loadTrash(); });
 
   var toastTimer;
   function showToast(msg) {
@@ -1178,7 +1255,8 @@
           if (editingId === o.id) exitEditMode();
           renderAll();
           updateBulkBar();
-          showToast('已刪除');
+          loadTrash();
+          showToast('已刪除，可在下方「最近刪除的訂單」還原');
         } catch (e) { showToast('刪除失敗，請再試一次'); }
       });
 
@@ -1419,6 +1497,7 @@
   }).catch(function () {
     $('orderList').innerHTML = '<p class="empty-state">訂單載入失敗，請重新整理頁面再試一次。</p>';
   });
+  loadTrash();
 })();
 </script>
 </body>

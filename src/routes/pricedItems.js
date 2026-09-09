@@ -7,7 +7,19 @@ router.get('/', async (req, res) => {
   const { data, error } = await supabase
     .from('priced_items')
     .select('*')
+    .is('deleted_at', null)
     .order('created_at', { ascending: false });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+router.get('/trash', async (req, res) => {
+  if (!supabase) return res.status(500).json({ error: 'Supabase 尚未設定' });
+  const { data, error } = await supabase
+    .from('priced_items')
+    .select('*')
+    .not('deleted_at', 'is', null)
+    .order('deleted_at', { ascending: false });
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
@@ -94,6 +106,30 @@ router.patch('/:id/item-no', async (req, res) => {
 });
 
 router.delete('/:id', async (req, res) => {
+  if (!supabase) return res.status(500).json({ error: 'Supabase 尚未設定' });
+  const { data, error } = await supabase
+    .from('priced_items')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', req.params.id)
+    .select()
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+router.post('/:id/restore', async (req, res) => {
+  if (!supabase) return res.status(500).json({ error: 'Supabase 尚未設定' });
+  const { data, error } = await supabase
+    .from('priced_items')
+    .update({ deleted_at: null })
+    .eq('id', req.params.id)
+    .select()
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+router.delete('/:id/permanent', async (req, res) => {
   if (!supabase) return res.status(500).json({ error: 'Supabase 尚未設定' });
   const { error } = await supabase.from('priced_items').delete().eq('id', req.params.id);
   if (error) return res.status(500).json({ error: error.message });
