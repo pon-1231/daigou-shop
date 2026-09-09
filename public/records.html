@@ -650,7 +650,7 @@
       details.className = 'gallery-group';
       details.open = true;
       var summary = document.createElement('summary');
-      summary.textContent = sg.group + '（' + sg.products.length + '）';
+      summary.textContent = sg.group + '（' + groupProducts(sg.products).length + '）';
       details.appendChild(summary);
       var grid = document.createElement('div');
       grid.className = 'gallery-group-grid';

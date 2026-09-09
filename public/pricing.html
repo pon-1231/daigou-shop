@@ -799,7 +799,7 @@
       details.className = 'saved-group';
       details.open = true;
       var summary = document.createElement('summary');
-      summary.textContent = g.group + '（' + g.items.length + '）';
+      summary.textContent = g.group + '（' + groupByName(g.items).length + '）';
       details.appendChild(summary);
       var innerList = document.createElement('div');
       innerList.className = 'saved-list';
