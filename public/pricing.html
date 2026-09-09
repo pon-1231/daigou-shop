@@ -125,6 +125,15 @@
     font-family: var(--font-mono); font-size: 12.5px; font-weight: 700; padding: 5px 12px; border-radius: 999px;
     border: 1px solid var(--line-strong); background: var(--bg); color: var(--ink-soft); cursor: pointer;
   }
+
+  .color-picker { display: flex; flex-direction: column; gap: 8px; }
+  .color-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .color-chips button {
+    font-family: var(--font-body); font-size: 12.5px; padding: 5px 12px; border-radius: 999px;
+    border: 1px solid var(--line-strong); background: var(--bg); color: var(--ink-soft); cursor: pointer;
+  }
+  .color-chips button.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  input.color-custom-input { width: 220px; font-size: 12.5px; padding: 6px 10px; }
   .group-quick-btns button.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
 
   .item-no-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
@@ -140,7 +149,7 @@
   .extra-row-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 8px; }
   .extra-row-item { padding-bottom: 6px; border-bottom: 1px dashed var(--line); }
   .extra-row-item:last-child { border-bottom: none; }
-  .extra-row { display: grid; grid-template-columns: 1fr 0.8fr 0.7fr 0.7fr auto; gap: 6px; align-items: center; }
+  .extra-row { display: grid; grid-template-columns: 1fr 0.8fr 0.8fr auto; gap: 6px; align-items: center; }
   .extra-row input {
     font-size: 12.5px; padding: 7px 10px; border-radius: var(--radius-sm); border: 1px solid var(--line-strong);
     width: 100%; font-family: var(--font-mono); font-variant-numeric: tabular-nums;
@@ -150,7 +159,8 @@
     font-size: 13px; padding: 7px 11px; border-radius: var(--radius-sm); border: 1px solid var(--bad);
     background: var(--bg-elevated); color: var(--bad); cursor: pointer;
   }
-  @media (max-width: 560px) { .extra-row { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 480px) { .extra-row { grid-template-columns: 1fr 1fr; } }
+  .extra-row-colors { margin-top: 6px; }
   .extra-row-info {
     font-size: 11.5px; color: var(--ink-soft); margin-top: 5px; font-family: var(--font-mono);
     font-variant-numeric: tabular-nums; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
@@ -286,8 +296,8 @@
         </div>
 
         <div class="product-name-row">
-          <label>顏色<span class="hint">選填，這一筆（或這一列）尺寸對應的顏色，跟尺寸分開記，方便之後篩選/顯示</span></label>
-          <input type="text" id="productColor" placeholder="例如：紅">
+          <label>顏色<span class="hint">選填，可以勾多個，也能自己新增；勾了幾個顏色，存檔時就會各自存成獨立一筆，之後能分開改價錢</span></label>
+          <div id="productColorPicker"></div>
         </div>
 
         <div class="product-name-row">
@@ -455,6 +465,7 @@
   var editingId = null;
   var currentPhotoUrl = null;
   var extraRows = [];
+  var productColors = [];
 
   var savedFx = null;
   try { savedFx = localStorage.getItem('daigou_fx_rate'); } catch (e) {}
@@ -887,6 +898,61 @@
   }
   $('productGroup').addEventListener('input', renderGroupQuickButtons);
 
+  var PRESET_COLORS = ['白', '黑', '灰', '紅', '粉', '黃', '綠', '藍', '紫', '棕', '銀', '金'];
+
+  function buildColorPicker(selectedColors, onChange) {
+    var wrap = document.createElement('div');
+    wrap.className = 'color-picker';
+    var chipsEl = document.createElement('div');
+    chipsEl.className = 'color-chips';
+    var customInput = document.createElement('input');
+    customInput.type = 'text';
+    customInput.className = 'color-custom-input';
+    customInput.placeholder = '輸入顏色後按 Enter 新增';
+
+    var extraColors = selectedColors.filter(function (c) { return PRESET_COLORS.indexOf(c) === -1; });
+
+    function renderChips() {
+      chipsEl.innerHTML = '';
+      PRESET_COLORS.concat(extraColors).forEach(function (c) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = c;
+        if (selectedColors.indexOf(c) !== -1) btn.className = 'active';
+        btn.addEventListener('click', function () {
+          var idx = selectedColors.indexOf(c);
+          if (idx === -1) selectedColors.push(c); else selectedColors.splice(idx, 1);
+          renderChips();
+          onChange(selectedColors);
+        });
+        chipsEl.appendChild(btn);
+      });
+    }
+    renderChips();
+
+    customInput.addEventListener('keydown', function (ev) {
+      if (ev.key !== 'Enter') return;
+      ev.preventDefault();
+      var val = customInput.value.trim();
+      if (!val) return;
+      if (extraColors.indexOf(val) === -1 && PRESET_COLORS.indexOf(val) === -1) extraColors.push(val);
+      if (selectedColors.indexOf(val) === -1) selectedColors.push(val);
+      customInput.value = '';
+      renderChips();
+      onChange(selectedColors);
+    });
+
+    wrap.appendChild(chipsEl);
+    wrap.appendChild(customInput);
+    return wrap;
+  }
+
+  function mountProductColorPicker() {
+    var container = $('productColorPicker');
+    container.innerHTML = '';
+    container.appendChild(buildColorPicker(productColors, function () {}));
+  }
+
   /* ---------- 同一個商品名稱、不同尺寸各自的價錢：extraRows ---------- */
 
   function siblingsOf(name, excludeId) {
@@ -897,7 +963,7 @@
 
   function toExtraRow(it) {
     return {
-      dbId: it.id, sizes: it.sizes || '', color: it.color || '', cost: Number(it.actual_cost) || 0, price: Number(it.final_price) || 0,
+      dbId: it.id, sizes: it.sizes || '', colors: it.color ? [it.color] : [], cost: Number(it.actual_cost) || 0, price: Number(it.final_price) || 0,
       rmbPrice: Number(it.rmb_price) || 0, rmbShip: Number(it.rmb_ship) || 0, fxRate: Number(it.fx_rate) || 4.5,
       crossShip: Number(it.cross_ship) || 0, packaging: Number(it.packaging) || 0, paymentFee: Number(it.payment_fee) || 0,
       domesticShip: Number(it.domestic_ship) || 0, multiplier: Number(it.multiplier) || 0
@@ -917,10 +983,6 @@
       var sizeInput = document.createElement('input');
       sizeInput.type = 'text'; sizeInput.placeholder = '尺寸'; sizeInput.value = row.sizes;
       sizeInput.addEventListener('input', function () { row.sizes = sizeInput.value; });
-
-      var colorInput = document.createElement('input');
-      colorInput.type = 'text'; colorInput.placeholder = '顏色'; colorInput.value = row.color;
-      colorInput.addEventListener('input', function () { row.color = colorInput.value; });
 
       var costInput = document.createElement('input');
       costInput.type = 'number'; costInput.placeholder = '成本'; costInput.min = '0'; costInput.step = '1'; costInput.value = row.cost;
@@ -948,7 +1010,11 @@
         renderExtraRows();
       });
 
-      wrap.appendChild(sizeInput); wrap.appendChild(colorInput); wrap.appendChild(costInput); wrap.appendChild(priceInput); wrap.appendChild(delBtn);
+      wrap.appendChild(sizeInput); wrap.appendChild(costInput); wrap.appendChild(priceInput); wrap.appendChild(delBtn);
+
+      var colorsBlock = document.createElement('div');
+      colorsBlock.className = 'extra-row-colors';
+      colorsBlock.appendChild(buildColorPicker(row.colors, function () {}));
 
       var info = document.createElement('div');
       info.className = 'extra-row-info';
@@ -974,6 +1040,7 @@
       updateInfo();
 
       item.appendChild(wrap);
+      item.appendChild(colorsBlock);
       item.appendChild(info);
       el.appendChild(item);
     });
@@ -986,7 +1053,7 @@
 
   $('addExtraRow').addEventListener('click', function () {
     extraRows.push({
-      dbId: null, sizes: '', color: $('productColor').value.trim(), cost: lastState.actualCost, price: lastState.finalPrice,
+      dbId: null, sizes: '', colors: productColors.slice(), cost: lastState.actualCost, price: lastState.finalPrice,
       rmbPrice: num('rmbPrice'), rmbShip: num('rmbShip'), fxRate: num('fxRate'),
       crossShip: num('crossShip'), packaging: num('packaging'), paymentFee: num('paymentFee'),
       domesticShip: num('domesticShip'), multiplier: parseFloat(slider.value) || 0
@@ -1024,7 +1091,6 @@
     return {
       name: $('productName').value.trim(),
       sizes: row.sizes.trim(),
-      color: row.color.trim(),
       sortGroup: $('productGroup').value.trim(),
       itemNo: $('productItemNo').value.trim(),
       categoryKey: currentCategory ? currentCategory.key : '',
@@ -1042,24 +1108,30 @@
   async function saveExtraRows() {
     for (var i = 0; i < extraRows.length; i++) {
       var row = extraRows[i];
-      var payload = extraRowPayload(row);
-      var res = await fetch(row.dbId ? '/api/priced-items/' + row.dbId : '/api/priced-items', {
-        method: row.dbId ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (!res.ok) throw new Error();
-      var saved = await res.json();
-      row.dbId = saved.id;
-      var idx = allSavedItems.findIndex(function (x) { return x.id === saved.id; });
-      if (idx !== -1) allSavedItems[idx] = saved; else allSavedItems.unshift(saved);
+      var baseFields = extraRowPayload(row);
+      var colorList = row.colors && row.colors.length ? row.colors : [''];
+      for (var j = 0; j < colorList.length; j++) {
+        var payload = Object.assign({}, baseFields, { color: colorList[j] });
+        var useExisting = j === 0 && row.dbId;
+        var res = await fetch(useExisting ? '/api/priced-items/' + row.dbId : '/api/priced-items', {
+          method: useExisting ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error();
+        var saved = await res.json();
+        if (j === 0) row.dbId = saved.id;
+        var idx = allSavedItems.findIndex(function (x) { return x.id === saved.id; });
+        if (idx !== -1) allSavedItems[idx] = saved; else allSavedItems.unshift(saved);
+      }
     }
   }
 
   function fillFormFromItem(it) {
     $('productName').value = it.name || '';
     $('productSizes').value = it.sizes || '';
-    $('productColor').value = it.color || '';
+    productColors = it.color ? [it.color] : [];
+    mountProductColorPicker();
     $('productGroup').value = it.sort_group || '';
     $('productItemNo').value = it.item_no != null ? it.item_no : '';
     $('rmbPrice').value = it.rmb_price;
@@ -1134,7 +1206,8 @@
     clearPhoto();
     $('productName').value = '範例商品';
     $('productSizes').value = '';
-    $('productColor').value = '';
+    productColors = [];
+    mountProductColorPicker();
     $('productGroup').value = '';
     $('productItemNo').value = '';
     $('rmbPrice').value = 20; $('rmbShip').value = 0; $('fxRate').value = 4.5;
@@ -1153,7 +1226,8 @@
     $('fxRate').value = 4.5;
     $('productName').value = '';
     $('productSizes').value = '';
-    $('productColor').value = '';
+    productColors = [];
+    mountProductColorPicker();
     $('productGroup').value = '';
     $('productItemNo').value = '';
     manualPrice.value = '';
@@ -1168,10 +1242,9 @@
   });
 
   $('saveItem').addEventListener('click', async function () {
-    var payload = {
+    var baseFields = {
       name: $('productName').value.trim(),
       sizes: $('productSizes').value.trim(),
-      color: $('productColor').value.trim(),
       sortGroup: $('productGroup').value.trim(),
       itemNo: $('productItemNo').value.trim(),
       categoryKey: currentCategory ? currentCategory.key : '',
@@ -1190,26 +1263,31 @@
     var original = btn.textContent;
     btn.disabled = true;
     try {
-      var res = await fetch(isEditing ? '/api/priced-items/' + editingId : '/api/priced-items', {
-        method: isEditing ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (!res.ok) throw new Error();
-      var saved = await res.json();
-      if (isEditing) {
+      var mainColorList = productColors.length ? productColors : [''];
+      for (var i = 0; i < mainColorList.length; i++) {
+        var payload = Object.assign({}, baseFields, { color: mainColorList[i] });
+        var useExisting = i === 0 && isEditing;
+        var res = await fetch(useExisting ? '/api/priced-items/' + editingId : '/api/priced-items', {
+          method: useExisting ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error();
+        var saved = await res.json();
         var idx = allSavedItems.findIndex(function (x) { return x.id === saved.id; });
-        if (idx !== -1) allSavedItems[idx] = saved;
-      } else {
-        allSavedItems.unshift(saved);
+        if (idx !== -1) allSavedItems[idx] = saved; else allSavedItems.unshift(saved);
       }
 
-      var extraCount = extraRows.length;
-      if (extraCount > 0) { await saveExtraRows(); }
+      var extraCount = 0;
+      extraRows.forEach(function (r) { extraCount += (r.colors && r.colors.length ? r.colors.length : 1); });
+      if (extraRows.length > 0) { await saveExtraRows(); }
 
       if (isEditing) { exitEditMode(); }
-      showToast(extraCount > 0 ? '已一次存好 ' + (1 + extraCount) + ' 個尺寸' : (isEditing ? '已更新' : '已加入清單'));
+      var totalCount = mainColorList.length + extraCount;
+      showToast(totalCount > 1 ? '已一次存好 ' + totalCount + ' 筆' : (isEditing ? '已更新' : '已加入清單'));
 
+      productColors = [];
+      mountProductColorPicker();
       clearExtraRows();
       renderSavedList($('searchSaved').value);
       refreshGroupOptions();
@@ -1227,6 +1305,7 @@
 
   recalc();
   renderGroupQuickButtons();
+  mountProductColorPicker();
   try {
     var qProduct = new URLSearchParams(window.location.search).get('product');
     if (qProduct) { $('productName').value = qProduct; }
