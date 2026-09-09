@@ -194,11 +194,21 @@
   .saved-item-multi .si-summary .si-name { flex: 1; min-width: 0; }
   .si-toggle-icon { font-size: 12px; color: var(--ink-soft); flex-shrink: 0; transition: transform 0.15s; }
   .saved-item-multi[open] .si-toggle-icon { transform: rotate(180deg); }
+  .si-bulk-bar {
+    display: flex; align-items: center; gap: 10px; padding: 0 14px 8px; font-size: 12px; color: var(--ink-soft);
+  }
+  .si-bulk-bar label { display: flex; align-items: center; gap: 4px; margin: 0; font-weight: 400; cursor: pointer; }
+  .si-bulk-bar button {
+    font-family: var(--font-body); font-size: 11px; padding: 3px 10px; border-radius: var(--radius-sm);
+    border: 1px solid var(--bad); background: var(--bg); color: var(--bad); cursor: pointer;
+  }
+  .si-bulk-bar button:disabled { opacity: 0.4; cursor: default; }
   .si-size-lines { display: flex; flex-direction: column; gap: 4px; padding: 0 14px 12px; }
   .si-size-line {
     display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;
     padding: 7px 10px; background: var(--bg-elevated); border-radius: var(--radius-sm);
   }
+  .si-size-line .si-line-check { flex-shrink: 0; margin-right: -4px; }
   .si-size-label { font-size: 12.5px; font-weight: 700; min-width: 44px; }
   .si-size-nums { font-size: 11.5px; color: var(--ink-soft); font-family: var(--font-mono); font-variant-numeric: tabular-nums; flex: 1; min-width: 0; }
   .si-size-actions { display: flex; gap: 4px; flex-shrink: 0; }
@@ -704,6 +714,7 @@
 
     var sizeLinesHtml = items.map(function (it) {
       return '<div class="si-size-line" data-id="' + it.id + '">' +
+        '<input type="checkbox" class="si-line-check">' +
         '<span class="si-size-label">' + escapeHtml(it.sizes || '(無標示尺寸)') + (it.color ? ' 🎨' + escapeHtml(it.color) : '') + '</span>' +
         '<span class="si-size-nums">成本 NT$' + fmt(it.actual_cost) + ' → 售價 NT$' + fmt(it.final_price) + ' · 淨利率 ' + Math.round(it.margin) + '%</span>' +
         '<span class="si-size-actions">' +
@@ -720,10 +731,52 @@
         '<span class="si-name">' + escapeHtml(first.name || '未命名商品') + '<span class="si-cat-badge">' + escapeHtml(first.category_label) + '</span><span class="count-badge">' + items.length + ' 種尺寸</span></span>' +
         '<span class="si-toggle-icon">▾</span>' +
       '</summary>' +
+      '<div class="si-bulk-bar">' +
+        '<label><input type="checkbox" class="si-select-all"> 全選</label>' +
+        '<button type="button" class="btn small ghost" data-action="bulk-delete" disabled>刪除已勾選（<span class="si-bulk-count">0</span>）</button>' +
+      '</div>' +
       '<div class="si-size-lines">' + sizeLinesHtml + '</div>';
 
     var nameEl = wrap.querySelector('.si-name');
     nameEl.insertBefore(bindNumInput(items), nameEl.firstChild);
+
+    var selectAllCheck = wrap.querySelector('.si-select-all');
+    var bulkDeleteBtn = wrap.querySelector('[data-action="bulk-delete"]');
+    var bulkCountEl = wrap.querySelector('.si-bulk-count');
+    var lineChecks = Array.from(wrap.querySelectorAll('.si-line-check'));
+
+    function updateBulkUi() {
+      var checkedCount = lineChecks.filter(function (c) { return c.checked; }).length;
+      bulkCountEl.textContent = checkedCount;
+      bulkDeleteBtn.disabled = checkedCount === 0;
+      selectAllCheck.checked = checkedCount > 0 && checkedCount === lineChecks.length;
+      selectAllCheck.indeterminate = checkedCount > 0 && checkedCount < lineChecks.length;
+    }
+    lineChecks.forEach(function (c) { c.addEventListener('change', updateBulkUi); });
+    selectAllCheck.addEventListener('change', function () {
+      lineChecks.forEach(function (c) { c.checked = selectAllCheck.checked; });
+      updateBulkUi();
+    });
+    bulkDeleteBtn.addEventListener('click', async function (e) {
+      e.preventDefault();
+      var idsToDelete = items.filter(function (it, idx) { return lineChecks[idx].checked; }).map(function (it) { return it.id; });
+      if (idsToDelete.length === 0) return;
+      bulkDeleteBtn.disabled = true;
+      try {
+        for (var i = 0; i < idsToDelete.length; i++) {
+          var res = await fetch('/api/priced-items/' + idsToDelete[i], { method: 'DELETE' });
+          if (!res.ok) throw new Error();
+          allSavedItems = allSavedItems.filter(function (x) { return x.id !== idsToDelete[i]; });
+        }
+        if (editingId && idsToDelete.indexOf(editingId) !== -1) exitEditMode();
+        renderSavedList($('searchSaved').value);
+        loadTrash();
+        showToast('已刪除 ' + idsToDelete.length + ' 筆，可在下方「最近刪除」還原');
+      } catch (err) {
+        showToast('刪除失敗，請再試一次');
+        bulkDeleteBtn.disabled = false;
+      }
+    });
 
     items.forEach(function (it) {
       var lineEl = wrap.querySelector('.si-size-line[data-id="' + it.id + '"]');
