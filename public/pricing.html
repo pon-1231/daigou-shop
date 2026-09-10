@@ -793,6 +793,17 @@
       return items.map(function (it) { return sizeLineHtml(it); }).join('');
     }
 
+    /* 用第一軸(例如顏色)第一次出現的順序當作全域排序，讓每一組的顏色排列都一致，方便掃視比較。 */
+    var v1Order = []; var v1Seen = {};
+    items.forEach(function (it) {
+      var v1 = axisValues(it).v1;
+      if (v1 && !v1Seen[v1]) { v1Seen[v1] = true; v1Order.push(v1); }
+    });
+    function v1Rank(it) {
+      var idx = v1Order.indexOf(axisValues(it).v1);
+      return idx === -1 ? v1Order.length : idx;
+    }
+
     var groups = {}; var order = [];
     items.forEach(function (it) {
       var v2 = axisValues(it).v2 || '(未標示)';
@@ -801,7 +812,7 @@
     });
 
     return order.map(function (v2) {
-      var groupItems = groups[v2];
+      var groupItems = groups[v2].slice().sort(function (a, b) { return v1Rank(a) - v1Rank(b); });
       var preview = groupItems.map(function (it) { return axisValues(it).v1; }).filter(Boolean).join('、');
       var rows = groupItems.map(function (it) { return sizeLineHtml(it, axisValues(it).v1); }).join('');
       return '<details class="combo-axis2-group">' +
