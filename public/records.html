@@ -98,6 +98,23 @@
   .sp-option-addnew {
     border-style: dashed; color: var(--ink-soft); font-weight: 600;
   }
+  .sp-color-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .sp-color-chip {
+    font-family: var(--font-body); font-size: 12.5px; padding: 6px 14px; border-radius: 999px;
+    border: 1px solid var(--line-strong); background: var(--bg-elevated); color: var(--ink-soft); cursor: pointer;
+  }
+  .sp-color-chip.active { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  .sp-size-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; margin-bottom: 8px; }
+  .sp-size-cell {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left;
+    font-family: var(--font-body); padding: 8px 10px; border-radius: var(--radius-sm);
+    border: 1px solid var(--accent); background: var(--bg-elevated); color: var(--accent); cursor: pointer;
+  }
+  .sp-size-cell:disabled {
+    border-color: var(--line-strong); background: var(--bg); color: var(--ink-soft); cursor: default; opacity: 0.7;
+  }
+  .sp-size-label { font-size: 12px; font-weight: 600; }
+  .sp-size-price { font-size: 11px; font-family: var(--font-mono); }
   .size-picker .sp-cancel {
     display: block; margin-top: 8px; font-family: var(--font-mono); font-size: 11px; color: var(--accent);
     background: none; border: none; cursor: pointer; text-decoration: underline;
@@ -338,13 +355,15 @@
             <div class="size-picker" id="sizePicker" style="display:none;">
               <div class="sp-title">「<span id="spItemName"></span>」選尺寸</div>
               <div class="sp-quick" id="spVariants"></div>
-              <div class="sp-add-form" id="spAddForm" style="display:none;">
-                <input type="text" id="spNewSize" placeholder="尺寸">
-                <input type="number" id="spNewCost" placeholder="成本" min="0" step="1">
-                <input type="number" id="spNewPrice" placeholder="售價" min="0" step="1">
-                <button type="button" id="spNewAdd">儲存修改</button>
+              <div id="spAddSection">
+                <div class="sp-add-form" id="spAddForm" style="display:none;">
+                  <input type="text" id="spNewSize" placeholder="尺寸">
+                  <input type="number" id="spNewCost" placeholder="成本" min="0" step="1">
+                  <input type="number" id="spNewPrice" placeholder="售價" min="0" step="1">
+                  <button type="button" id="spNewAdd">儲存修改</button>
+                </div>
+                <p class="sp-hint-link">這個尺寸成本結構不一樣（不是套用同樣的成本／售價）？到<a id="spGotoPricing" href="/pricing.html" target="_blank" rel="noopener">定價計算機</a>幫這個商品重新設定完整拆解。</p>
               </div>
-              <p class="sp-hint-link">這個尺寸成本結構不一樣（不是套用同樣的成本／售價）？到<a id="spGotoPricing" href="/pricing.html" target="_blank" rel="noopener">定價計算機</a>幫這個商品重新設定完整拆解。</p>
               <button type="button" id="spCancel" class="sp-cancel">✕ 取消</button>
             </div>
           </div>
@@ -557,12 +576,23 @@
     group.variants.forEach(function (p) {
       var sizes = parseSizes(p.sizes);
       if (sizes.length === 0) {
-        options.push({ product: p, size: '' });
+        options.push({ product: p, size: '', color: p.color || '' });
       } else {
-        sizes.forEach(function (s) { options.push({ product: p, size: s }); });
+        sizes.forEach(function (s) { options.push({ product: p, size: s, color: p.color || '' }); });
       }
     });
     return options;
+  }
+
+  function uniqNonEmpty(arr) {
+    var seen = {};
+    var out = [];
+    arr.forEach(function (v) {
+      if (!v || seen[v]) return;
+      seen[v] = true;
+      out.push(v);
+    });
+    return out;
   }
 
   function buildGalleryCard(group) {
@@ -669,11 +699,7 @@
   var editingOriginalSize = null;
   var isAddingNewSize = false;
 
-  function openSizePicker(name, options) {
-    currentPickerName = name;
-    currentPickerTemplate = options[0] ? options[0].product : null;
-    $('spItemName').textContent = name;
-    $('spGotoPricing').href = '/pricing.html?product=' + encodeURIComponent(name);
+  function renderFlatPicker(options) {
     var el = $('spVariants');
     el.innerHTML = '';
     options.forEach(function (opt) {
@@ -733,6 +759,102 @@
     });
     addRow.appendChild(addBtn);
     el.appendChild(addRow);
+  }
+
+  var picker2dSelectedColor = null;
+
+  function render2dPicker(options) {
+    var el = $('spVariants');
+    el.innerHTML = '';
+    picker2dSelectedColor = null;
+
+    var colors = uniqNonEmpty(options.map(function (o) { return o.color; }));
+    var sizes = uniqNonEmpty(options.map(function (o) { return o.size; }));
+
+    var colorRow = document.createElement('div');
+    colorRow.className = 'sp-color-row';
+    var sizeGrid = document.createElement('div');
+    sizeGrid.className = 'sp-size-grid';
+
+    function findOption(size, color) {
+      return options.find(function (o) { return o.size === size && o.color === color; });
+    }
+
+    function refreshSizeButtons() {
+      Array.from(sizeGrid.children).forEach(function (btn) {
+        var size = btn.dataset.size;
+        if (!picker2dSelectedColor) {
+          btn.disabled = true;
+          btn.querySelector('.sp-size-price').textContent = '請先選顏色';
+          return;
+        }
+        var match = findOption(size, picker2dSelectedColor);
+        if (match) {
+          btn.disabled = false;
+          btn.querySelector('.sp-size-price').textContent = 'NT$' + fmt(match.product.final_price);
+        } else {
+          btn.disabled = true;
+          btn.querySelector('.sp-size-price').textContent = '無此組合';
+        }
+      });
+    }
+
+    colors.forEach(function (c) {
+      var chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'sp-color-chip';
+      chip.textContent = c;
+      chip.addEventListener('click', function () {
+        picker2dSelectedColor = (picker2dSelectedColor === c) ? null : c;
+        Array.from(colorRow.children).forEach(function (b) { b.classList.toggle('active', b === chip && picker2dSelectedColor === c); });
+        refreshSizeButtons();
+      });
+      colorRow.appendChild(chip);
+    });
+
+    sizes.forEach(function (s) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'sp-size-cell';
+      btn.dataset.size = s;
+      btn.innerHTML = '<span class="sp-size-label">' + escapeHtml(s) + '</span><span class="sp-size-price">請先選顏色</span>';
+      btn.disabled = true;
+      btn.addEventListener('click', function () {
+        if (!picker2dSelectedColor) { showToast('請先選顏色'); return; }
+        var match = findOption(s, picker2dSelectedColor);
+        if (!match) return;
+        addProductToCart(match.product, match.size);
+        closeSizePicker();
+      });
+      sizeGrid.appendChild(btn);
+    });
+
+    var manageLink = document.createElement('p');
+    manageLink.className = 'sp-hint-link';
+    manageLink.innerHTML = '想改價錢或新增規格？到<a href="/pricing.html?product=' + encodeURIComponent(currentPickerName || '') + '" target="_blank" rel="noopener">定價計算機</a>管理這個商品。';
+
+    el.appendChild(colorRow);
+    el.appendChild(sizeGrid);
+    el.appendChild(manageLink);
+  }
+
+  function openSizePicker(name, options) {
+    currentPickerName = name;
+    currentPickerTemplate = options[0] ? options[0].product : null;
+    $('spItemName').textContent = name;
+    $('spGotoPricing').href = '/pricing.html?product=' + encodeURIComponent(name);
+
+    var colorCount = uniqNonEmpty(options.map(function (o) { return o.color; })).length;
+    var sizeCount = uniqNonEmpty(options.map(function (o) { return o.size; })).length;
+    var is2d = colorCount > 1 && sizeCount > 1;
+
+    if (is2d) {
+      render2dPicker(options);
+      $('spAddSection').style.display = 'none';
+    } else {
+      renderFlatPicker(options);
+      $('spAddSection').style.display = '';
+    }
 
     resetAddForm();
     $('sizePicker').style.display = '';
