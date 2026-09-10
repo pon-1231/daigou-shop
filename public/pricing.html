@@ -787,12 +787,7 @@
 
   /* 有第二個規格軸(例如尺寸)、且商品組合數較多時，先按第二軸分組、只顯示第一軸有哪些選項，
      點開才看到每個組合實際的成本/售價——避免像 36 種尺寸全部攤平列出來太亂。 */
-  function buildSizeLinesHtml(items) {
-    var hasAxis2 = items.some(function (it) { return axisValues(it).v2; });
-    if (!hasAxis2 || items.length <= 6) {
-      return items.map(function (it) { return sizeLineHtml(it); }).join('');
-    }
-
+  function buildAxis2GroupedHtml(items) {
     /* 用第一軸(例如顏色)第一次出現的順序當作全域排序，讓每一組的顏色排列都一致，方便掃視比較。 */
     var v1Order = []; var v1Seen = {};
     items.forEach(function (it) {
@@ -824,6 +819,43 @@
         '<div class="si-size-lines">' + rows + '</div>' +
       '</details>';
     }).join('');
+  }
+
+  /* 沒有第二個規格軸(單規格)時，改成按「成本/售價完全相同」分組——同一個價位的款式名稱寫在同一行，
+     點開才看到各自的編輯/套用/刪除，避免同價位的顏色一人一行重複列成本售價。 */
+  function buildPriceGroupedHtml(items) {
+    var groups = {}; var order = [];
+    items.forEach(function (it) {
+      var key = it.actual_cost + '|' + it.final_price;
+      if (!groups[key]) { groups[key] = []; order.push(key); }
+      groups[key].push(it);
+    });
+
+    return order.map(function (key) {
+      var groupItems = groups[key];
+      if (groupItems.length === 1) return sizeLineHtml(groupItems[0]);
+
+      var first = groupItems[0];
+      var labels = groupItems.map(function (it) { return specLabelText(it); }).filter(Boolean).join('、');
+      var rows = groupItems.map(function (it) { return sizeLineHtml(it); }).join('');
+      return '<details class="combo-axis2-group">' +
+        '<summary class="combo-axis2-summary">' +
+          '<span class="combo-axis2-label">' + escapeHtml(labels || '(無標示規格)') + '</span>' +
+          '<span class="combo-axis2-preview">成本 NT$' + fmt(first.actual_cost) + ' → 售價 NT$' + fmt(first.final_price) + ' · 淨利率 ' + Math.round(first.margin) + '%</span>' +
+          '<span class="si-toggle-icon">▾</span>' +
+        '</summary>' +
+        '<div class="si-size-lines">' + rows + '</div>' +
+      '</details>';
+    }).join('');
+  }
+
+  function buildSizeLinesHtml(items) {
+    /* 舊資料可能只有 color 或只有 sizes 其中一欄有值(用它 mirror 進 spec1/spec2)，
+       兩軸都真的有值、且組合數夠多時才照第二軸分組；否則(單軸資料，不管實際落在哪一欄)一律按價格分組。 */
+    var hasV1 = items.some(function (it) { return axisValues(it).v1; });
+    var hasV2 = items.some(function (it) { return axisValues(it).v2; });
+    if (hasV1 && hasV2 && items.length > 6) return buildAxis2GroupedHtml(items);
+    return buildPriceGroupedHtml(items);
   }
 
   function buildSavedProductCard(items) {
