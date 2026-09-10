@@ -756,6 +756,64 @@
     return row;
   }
 
+  /* 同一個商品名稱底下，如果每一筆成本/售價都完全一樣，就不用另外點開才看得到——
+     直接合併成一行、規格選項寫在一起顯示，跟只有一筆的商品長得一樣，一目了然。 */
+  function buildMergedSinglePriceRow(items) {
+    var first = items[0];
+    var v1s = [], v1Seen = {};
+    var v2s = [], v2Seen = {};
+    items.forEach(function (it) {
+      var av = axisValues(it);
+      if (av.v1 && !v1Seen[av.v1]) { v1Seen[av.v1] = true; v1s.push(av.v1); }
+      if (av.v2 && !v2Seen[av.v2]) { v2Seen[av.v2] = true; v2s.push(av.v2); }
+    });
+    var mergedForBadges = {
+      spec1_name: first.spec1_name, spec1_value: v1s.join('、'), color: first.color,
+      spec2_name: first.spec2_name, spec2_value: v2s.join('、'), sizes: v2s.join(',')
+    };
+
+    var row = document.createElement('div');
+    row.className = 'saved-item';
+    var dateStr = new Date(first.created_at).toLocaleDateString('zh-Hant-TW');
+    var thumbUrl = (items.filter(function (it) { return it.photo_url; })[0] || {}).photo_url;
+    var thumbHtml = thumbUrl ? '<img class="si-thumb" src="' + escapeHtml(thumbUrl) + '" alt="">' : '';
+
+    row.innerHTML =
+      thumbHtml +
+      '<div class="si-text">' +
+        '<div class="si-name">' + escapeHtml(first.name || '未命名商品') + '<span class="si-cat-badge">' + escapeHtml(first.category_label) + '</span>' + specBadgesHtml(mergedForBadges) + '</div>' +
+        '<div class="si-sub">實際成本 NT$' + fmt(first.actual_cost) + ' → 售價 NT$' + fmt(first.final_price) + ' · 淨利率 ' + Math.round(first.margin) + '% · ' + dateStr + '</div>' +
+      '</div>' +
+      '<div class="si-actions">' +
+        '<button type="button" class="btn small" data-action="edit">編輯</button>' +
+        '<button type="button" class="btn small" data-action="apply">套用</button>' +
+        '<button type="button" class="btn small ghost" data-action="delete">刪除</button>' +
+      '</div>';
+
+    var nameEl = row.querySelector('.si-name');
+    nameEl.insertBefore(bindNumInput(items), nameEl.firstChild);
+
+    row.querySelector('[data-action="edit"]').addEventListener('click', function () { editItem(first); });
+    row.querySelector('[data-action="apply"]').addEventListener('click', function () { applyItem(first); });
+    row.querySelector('[data-action="delete"]').addEventListener('click', async function () {
+      var btn = row.querySelector('[data-action="delete"]');
+      btn.disabled = true;
+      try {
+        for (var i = 0; i < items.length; i++) {
+          var res = await fetch('/api/priced-items/' + items[i].id, { method: 'DELETE' });
+          if (!res.ok) throw new Error();
+          allSavedItems = allSavedItems.filter(function (x) { return x.id !== items[i].id; });
+          if (editingId === items[i].id) exitEditMode();
+        }
+        renderSavedList($('searchSaved').value);
+        loadTrash();
+        showToast('已刪除 ' + items.length + ' 筆，可在下方「最近刪除」還原');
+      } catch (e) { showToast('刪除失敗，請再試一次'); btn.disabled = false; }
+    });
+
+    return row;
+  }
+
   function groupByName(items) {
     var byName = {};
     var order = [];
@@ -860,6 +918,9 @@
 
   function buildSavedProductCard(items) {
     if (items.length === 1) return buildSavedItemRow(items[0]);
+
+    var allSamePrice = items.every(function (it) { return it.actual_cost === items[0].actual_cost && it.final_price === items[0].final_price; });
+    if (allSamePrice) return buildMergedSinglePriceRow(items);
 
     var first = items[0];
     var wrap = document.createElement('details');
