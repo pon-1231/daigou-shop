@@ -92,8 +92,6 @@
   .final-block .fb-value span { font-size: 18px; font-weight: 600; }
   .chip-row { display: flex; gap: 8px; justify-content: center; margin-top: 10px; flex-wrap: wrap; }
 
-  .ship-block { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
-  .ship-block .r-row:last-child { border-bottom: none; font-weight: 700; }
   .ship-note { font-size: 11.5px; color: var(--ink-soft); margin-top: 8px; line-height: 1.5; }
 
   details.formula { margin-top: 18px; font-size: 12.5px; color: var(--ink-soft); }
@@ -227,6 +225,17 @@
     border: 1px solid var(--line-strong); background: var(--bg); color: var(--ink-soft); cursor: pointer;
   }
 
+  .combo-axis2-group { border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; }
+  .combo-axis2-summary {
+    display: flex; align-items: center; gap: 10px; padding: 9px 12px; cursor: pointer; list-style: none;
+    background: var(--bg-elevated);
+  }
+  .combo-axis2-summary::-webkit-details-marker { display: none; }
+  .combo-axis2-label { font-size: 13px; font-weight: 700; flex-shrink: 0; }
+  .combo-axis2-preview { font-size: 12px; color: var(--ink-soft); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .combo-axis2-group[open] > .combo-axis2-summary .si-toggle-icon { transform: rotate(180deg); }
+  .combo-axis2-group .si-size-lines { padding: 8px 10px; }
+
   .photo-drop {
     border: 1px dashed var(--line-strong); border-radius: var(--radius-sm); padding: 14px;
     text-align: center; cursor: pointer; background: var(--bg);
@@ -289,7 +298,7 @@
   </nav>
 
   <h1>代購定價計算機</h1>
-  <p class="sub">把中國進貨成本、跨境運費、包材與手續費填進去，選一下商品類型，就能算出建議售價、每件淨利，還有給客人的運費要怎麼分開列。清單存在雲端資料庫，換裝置也看得到。</p>
+  <p class="sub">把中國進貨成本、跨境運費、包材與手續費填進去，選一下商品類型，就能算出建議售價、每件淨利。清單存在雲端資料庫，換裝置也看得到。</p>
   <div class="flow">
     <div class="step"><span class="num">1</span>中國成本</div>
     <span class="arrow">→</span>
@@ -399,15 +408,6 @@
           <div class="field-row"><label>金流／平台費</label><div class="field-input"><span class="prefix">NT$</span><input type="number" id="paymentFee" inputmode="decimal" placeholder="0" min="0" step="1"></div></div>
         </div>
 
-        <div class="field-group">
-          <h3 class="group-title">🚚 給客人的運費</h3>
-          <div class="field-row">
-            <label>寄給客人的運費<span class="hint">代收代付，不算進商品利潤</span></label>
-            <div class="field-input"><span class="prefix">NT$</span><input type="number" id="domesticShip" inputmode="decimal" placeholder="0" min="0" step="1"></div>
-          </div>
-          <p class="note-line">這筆會單獨列在最下面給客人看，不會被拿去乘倍數算利潤——避免運費偷偷被算成「賺到的錢」。</p>
-        </div>
-
         <div class="category-picker">
           <h3 class="group-title">🏷️ 商品類型 → 倍數區間</h3>
           <div class="cat-btns">
@@ -448,19 +448,14 @@
           <div class="chip-row"><span class="chip" id="marginChip">淨利率 0%</span><span class="chip" id="profitChip">淨利 NT$0</span></div>
         </div>
 
-        <div class="ship-block">
-          <div class="r-row"><div>🚚 給客人的運費<span class="r-formula">獨立列出，不影響利潤</span></div><span class="r-num" id="shipOut">NT$0</span></div>
-          <div class="r-row"><div>客人總支付</div><span class="r-num" id="totalPay">NT$0</span></div>
-          <p class="ship-note" id="breakevenNote">實際成本 NT$0 —— 售價低於這個數字就會虧本。</p>
-        </div>
+        <p class="ship-note" id="breakevenNote">實際成本 NT$0 —— 售價低於這個數字就會虧本。</p>
 
         <details class="formula">
           <summary>公式怎麼算的？</summary>
           <div class="formula-body">
             ① 中國成本 ＝（商品人民幣＋境內運費）× 匯率<br>
             ② 實際成本 ＝ 中國成本＋跨境運費＋包材＋金流費<br>
-            ③ 建議售價 ＝ 實際成本 × 類型倍數<br>
-            客人總支付 ＝ 建議售價＋給客人的運費
+            ③ 建議售價 ＝ 實際成本 × 類型倍數
           </div>
         </details>
       </div>
@@ -493,7 +488,7 @@
 <script>
 (function () {
   var $ = function (id) { return document.getElementById(id); };
-  var fields = ['rmbPrice','rmbShip','fxRate','crossShip','packaging','paymentFee','domesticShip'];
+  var fields = ['rmbPrice','rmbShip','fxRate','crossShip','packaging','paymentFee'];
   var slider = $('multiplierSlider');
   var manualPrice = $('manualPrice');
   var catDefs = [
@@ -580,7 +575,6 @@
     var chinaCost = (rmbPrice + rmbShip) * fx;
     var crossShip = num('crossShip'), packaging = num('packaging'), paymentFee = num('paymentFee');
     var actualCost = chinaCost + crossShip + packaging + paymentFee;
-    var domesticShip = num('domesticShip');
     var multiplier = parseFloat(slider.value) || 0;
     var sliderPrice = Math.round(actualCost * multiplier);
     var manualVal = manualPrice.value.trim();
@@ -588,15 +582,12 @@
     var finalPrice = overrideActive ? (parseFloat(manualVal) || 0) : sliderPrice;
     var profit = finalPrice - actualCost;
     var margin = finalPrice > 0 ? (profit / finalPrice * 100) : 0;
-    var totalPay = finalPrice + domesticShip;
 
     $('chinaCostFormula').textContent = '(¥' + fmt2(rmbPrice) + ' + ¥' + fmt2(rmbShip) + ') × ' + fmt2(fx);
     $('chinaCost').textContent = 'NT$' + fmt(chinaCost);
     $('actualCost').textContent = 'NT$' + fmt(actualCost);
     $('sliderValueLabel').textContent = multiplier.toFixed(2) + '×';
     $('finalPrice').textContent = fmt(overrideActive ? finalPrice : sliderPrice);
-    $('shipOut').textContent = 'NT$' + fmt(domesticShip);
-    $('totalPay').textContent = 'NT$' + fmt(totalPay);
     $('breakevenNote').textContent = '實際成本 NT$' + fmt(actualCost) + ' —— 售價低於這個數字就會虧本。';
 
     var marginChip = $('marginChip'), profitChip = $('profitChip');
@@ -776,6 +767,54 @@
     return order.map(function (n) { return byName[n]; });
   }
 
+  function axisValues(it) {
+    return { v1: it.spec1_value || it.color || '', v2: it.spec2_value || it.sizes || '' };
+  }
+
+  function sizeLineHtml(it, labelOverride) {
+    var specText = labelOverride != null ? labelOverride : specLabelText(it);
+    return '<div class="si-size-line" data-id="' + it.id + '">' +
+      '<input type="checkbox" class="si-line-check">' +
+      '<span class="si-size-label">' + escapeHtml(specText || '(無標示規格)') + '</span>' +
+      '<span class="si-size-nums">成本 NT$' + fmt(it.actual_cost) + ' → 售價 NT$' + fmt(it.final_price) + ' · 淨利率 ' + Math.round(it.margin) + '%</span>' +
+      '<span class="si-size-actions">' +
+        '<button type="button" data-action="edit">編輯</button>' +
+        '<button type="button" data-action="apply">套用</button>' +
+        '<button type="button" data-action="delete">刪除</button>' +
+      '</span>' +
+    '</div>';
+  }
+
+  /* 有第二個規格軸(例如尺寸)、且商品組合數較多時，先按第二軸分組、只顯示第一軸有哪些選項，
+     點開才看到每個組合實際的成本/售價——避免像 36 種尺寸全部攤平列出來太亂。 */
+  function buildSizeLinesHtml(items) {
+    var hasAxis2 = items.some(function (it) { return axisValues(it).v2; });
+    if (!hasAxis2 || items.length <= 6) {
+      return items.map(function (it) { return sizeLineHtml(it); }).join('');
+    }
+
+    var groups = {}; var order = [];
+    items.forEach(function (it) {
+      var v2 = axisValues(it).v2 || '(未標示)';
+      if (!groups[v2]) { groups[v2] = []; order.push(v2); }
+      groups[v2].push(it);
+    });
+
+    return order.map(function (v2) {
+      var groupItems = groups[v2];
+      var preview = groupItems.map(function (it) { return axisValues(it).v1; }).filter(Boolean).join('、');
+      var rows = groupItems.map(function (it) { return sizeLineHtml(it, axisValues(it).v1); }).join('');
+      return '<details class="combo-axis2-group">' +
+        '<summary class="combo-axis2-summary">' +
+          '<span class="combo-axis2-label">' + escapeHtml(v2) + '</span>' +
+          '<span class="combo-axis2-preview">' + escapeHtml(preview || '（無標示）') + '</span>' +
+          '<span class="si-toggle-icon">▾</span>' +
+        '</summary>' +
+        '<div class="si-size-lines">' + rows + '</div>' +
+      '</details>';
+    }).join('');
+  }
+
   function buildSavedProductCard(items) {
     if (items.length === 1) return buildSavedItemRow(items[0]);
 
@@ -785,19 +824,7 @@
     var thumbUrl = (items.filter(function (it) { return it.photo_url; })[0] || {}).photo_url;
     var thumbHtml = thumbUrl ? '<img class="si-thumb" src="' + escapeHtml(thumbUrl) + '" alt="">' : '';
 
-    var sizeLinesHtml = items.map(function (it) {
-      var specText = specLabelText(it);
-      return '<div class="si-size-line" data-id="' + it.id + '">' +
-        '<input type="checkbox" class="si-line-check">' +
-        '<span class="si-size-label">' + escapeHtml(specText || '(無標示規格)') + '</span>' +
-        '<span class="si-size-nums">成本 NT$' + fmt(it.actual_cost) + ' → 售價 NT$' + fmt(it.final_price) + ' · 淨利率 ' + Math.round(it.margin) + '%</span>' +
-        '<span class="si-size-actions">' +
-          '<button type="button" data-action="edit">編輯</button>' +
-          '<button type="button" data-action="apply">套用</button>' +
-          '<button type="button" data-action="delete">刪除</button>' +
-        '</span>' +
-      '</div>';
-    }).join('');
+    var sizeLinesHtml = buildSizeLinesHtml(items);
 
     wrap.innerHTML =
       '<summary class="si-summary">' +
@@ -1129,7 +1156,6 @@
       categoryLabel: currentCategory ? currentCategory.label : '未分類',
       rmbPrice: num('rmbPrice'), rmbShip: num('rmbShip'), fxRate: num('fxRate'),
       crossShip: num('crossShip'), packaging: num('packaging'), paymentFee: num('paymentFee'),
-      domesticShip: num('domesticShip'),
       multiplier: parseFloat(slider.value) || 0,
       manualPrice: unifyPrice ? manualPrice.value.trim() : price,
       chinaCost: lastState.chinaCost, actualCost: cost, finalPrice: price,
@@ -1152,7 +1178,6 @@
     $('crossShip').value = it.cross_ship;
     $('packaging').value = it.packaging;
     $('paymentFee').value = it.payment_fee;
-    $('domesticShip').value = it.domestic_ship;
     manualPrice.value = it.manual_price == null ? '' : it.manual_price;
     var def = catDefs.filter(function (d) { return d.key === it.category_key; })[0];
     if (def) { setCategory(def, true); slider.value = it.multiplier; }
@@ -1278,7 +1303,7 @@
     $('productGroup').value = '';
     $('productItemNo').value = '';
     $('rmbPrice').value = 20; $('rmbShip').value = 0; $('fxRate').value = 4.5;
-    $('crossShip').value = 15; $('packaging').value = 5; $('paymentFee').value = 10; $('domesticShip').value = 60;
+    $('crossShip').value = 15; $('packaging').value = 5; $('paymentFee').value = 10;
     manualPrice.value = '';
     setCategory(catDefs[1]);
     resetSpecState();
