@@ -33,6 +33,17 @@ alter table priced_items add column if not exists sort_group text;
 alter table priced_items add column if not exists item_no integer;
 alter table priced_items add column if not exists color text;
 alter table priced_items add column if not exists deleted_at timestamptz;
+alter table priced_items add column if not exists spec1_name text;
+alter table priced_items add column if not exists spec1_value text;
+alter table priced_items add column if not exists spec2_name text;
+alter table priced_items add column if not exists spec2_value text;
+
+-- 1e. 轉換工具：把舊的 color/sizes 資料回填成新的規格欄位（可重複執行，不會覆蓋已經填過的資料）
+update priced_items set spec1_name = '顏色', spec1_value = color
+where color is not null and color <> '' and spec1_value is null;
+
+update priced_items set spec2_name = '尺寸', spec2_value = sizes
+where sizes is not null and sizes <> '' and spec2_value is null;
 
 -- 1c. 把還沒有編號的舊資料，依照建立時間先補上 1,2,3...（之後可以在畫面上自己改）
 with numbered as (

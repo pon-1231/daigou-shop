@@ -247,6 +247,29 @@
   }
 
   footer.page-foot { margin-top: 30px; font-size: 12px; color: var(--ink-soft); text-align: center; }
+
+  .spec-section .hint { margin-bottom: 12px; }
+  .spec-mode-btns { grid-template-columns: repeat(3, 1fr); margin-bottom: 14px; }
+  .spec-unify-btns { grid-template-columns: repeat(2, 1fr); }
+  .cat-btn.small-cat { padding: 8px 10px; }
+  .spec-axis { margin-bottom: 12px; }
+  .spec-axis-row { display: grid; grid-template-columns: 0.8fr 1.4fr; gap: 8px; }
+  @media (max-width: 480px) { .spec-axis-row { grid-template-columns: 1fr; } }
+  .spec-axis-row input { font-size: 13px; }
+
+  .spec-unify-row { margin: 4px 0 14px; }
+  .lbl-inline { display: block; font-size: 12.5px; color: var(--ink-soft); margin-bottom: 8px; }
+
+  .combo-preview { margin-top: 6px; }
+  .combo-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+  .combo-count { font-family: var(--font-mono); font-size: 12px; color: var(--ink-soft); }
+  .combo-row-main { grid-template-columns: 1fr auto auto auto; }
+  .combo-row-main .combo-label { font-size: 13.5px; font-weight: 600; }
+  .combo-price-readout { font-family: var(--font-mono); font-size: 12px; color: var(--ink-soft); white-space: nowrap; }
+  .combo-excluded { opacity: 0.55; }
+  .combo-excluded .extra-row { grid-template-columns: 1fr auto; }
+  .combo-excluded .combo-label { text-decoration: line-through; }
+  @media (max-width: 480px) { .combo-row-main { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -290,24 +313,43 @@
           <input type="text" id="productName" placeholder="例如：貓咪造型卡套">
         </div>
 
-        <div class="product-name-row">
-          <label>可選尺寸<span class="hint">選填，用逗號分隔，例如 S,M,L,均碼；價錢都一樣，只是先定義好有哪些尺寸可以選</span></label>
-          <input type="text" id="productSizes" placeholder="例如：S,M,L,均碼">
-        </div>
+        <div class="product-name-row spec-section">
+          <label>商品規格<span class="hint">先選這個商品有幾種規格軸，規格名稱可以自己打(例如「顏色」「尺寸」「口味」)；選好選項後，下面會自動列出所有組合</span></label>
 
-        <div class="product-name-row">
-          <label>顏色<span class="hint">選填，可以勾多個，也能自己新增；勾了幾個顏色，存檔時就會各自存成獨立一筆，之後能分開改價錢</span></label>
-          <div id="productColorPicker"></div>
-        </div>
+          <div class="cat-btns spec-mode-btns" id="specModeBtns">
+            <button type="button" class="cat-btn" id="specModeNone"><span class="cat-name">無規格</span><span class="cat-ex">單一商品，沒有選項</span></button>
+            <button type="button" class="cat-btn" id="specMode1"><span class="cat-name">單規格</span><span class="cat-ex">只選一種，例如顏色</span></button>
+            <button type="button" class="cat-btn" id="specMode2"><span class="cat-name">雙規格</span><span class="cat-ex">兩種交叉，例如顏色×尺寸</span></button>
+          </div>
 
-        <div class="product-name-row">
-          <label>這個商品的其他尺寸／價錢<span class="hint">如果同一個商品不同尺寸價錢不一樣，按下面「+ 新增一列」把現在算好的成本/售價存成一列，改一下尺寸和金額就好；「加入清單」會一次把全部尺寸一起存檔</span></label>
-          <p class="load-siblings-hint" id="loadSiblingsHint" style="display:none;">
-            「<span id="siblingsProductName"></span>」已經有 <span id="siblingsCount"></span> 筆尺寸資料，
-            <button type="button" id="loadSiblingsBtn">一起載入編輯</button>
-          </p>
-          <div class="extra-row-list" id="extraRowList"></div>
-          <button type="button" class="btn small" id="addExtraRow">+ 用目前輸入的成本，新增一列尺寸</button>
+          <div class="spec-axis" id="specAxis1" style="display:none;">
+            <div class="spec-axis-row">
+              <input type="text" id="spec1Name" placeholder="規格1名稱，例如：顏色" maxlength="25">
+              <input type="text" id="spec1Options" placeholder="選項，用逗號分隔，例如：紅色、白色" maxlength="200">
+            </div>
+          </div>
+          <div class="spec-axis" id="specAxis2" style="display:none;">
+            <div class="spec-axis-row">
+              <input type="text" id="spec2Name" placeholder="規格2名稱，例如：尺寸" maxlength="25">
+              <input type="text" id="spec2Options" placeholder="選項，用逗號分隔，例如：S、M、L" maxlength="200">
+            </div>
+          </div>
+
+          <div class="spec-unify-row" id="specUnifyRow" style="display:none;">
+            <span class="lbl-inline">價格是否統一？</span>
+            <div class="cat-btns spec-unify-btns">
+              <button type="button" class="cat-btn small-cat" id="unifyYes"><span class="cat-name">統一</span><span class="cat-ex">全部組合共用同一份成本/售價</span></button>
+              <button type="button" class="cat-btn small-cat" id="unifyNo"><span class="cat-name">不統一</span><span class="cat-ex">每個組合可以各自改成本/售價</span></button>
+            </div>
+          </div>
+
+          <div class="combo-preview" id="comboPreview" style="display:none;">
+            <div class="combo-head">
+              <span class="combo-count" id="comboCount">共 0 種組合</span>
+              <button type="button" class="btn small" id="applyAllCombo" style="display:none;">全部套用目前成本/售價</button>
+            </div>
+            <div class="extra-row-list" id="comboList"></div>
+          </div>
         </div>
 
         <div class="product-name-row">
@@ -464,8 +506,9 @@
   var allSavedItems = [];
   var editingId = null;
   var currentPhotoUrl = null;
-  var extraRows = [];
-  var productColors = [];
+  var specMode = 0;
+  var unifyPrice = true;
+  var comboOverrides = {};
 
   var savedFx = null;
   try { savedFx = localStorage.getItem('daigou_fx_rate'); } catch (e) {}
@@ -565,6 +608,7 @@
     profitChip.className = 'chip ' + cls;
 
     lastState = { chinaCost: chinaCost, actualCost: actualCost, finalPrice: overrideActive ? finalPrice : sliderPrice, profit: profit, margin: margin };
+    renderSpecSection();
   }
 
   async function fetchSaved() {
@@ -579,6 +623,23 @@
     return d.toLocaleDateString('zh-Hant-TW') + ' ' + d.toLocaleTimeString('zh-Hant-TW', { hour: '2-digit', minute: '2-digit' });
   }
 
+  /* 優先用新的 spec1/spec2 欄位顯示規格；還沒跑過資料庫轉換 SQL 的舊資料，各自 fallback 回舊的 color/sizes 欄位。 */
+  function specBadgesHtml(it) {
+    var out = '';
+    if (it.spec1_value) out += '<span class="si-cat-badge">' + escapeHtml(it.spec1_name || '規格1') + ': ' + escapeHtml(it.spec1_value) + '</span>';
+    else if (it.color) out += '<span class="si-cat-badge">🎨 ' + escapeHtml(it.color) + '</span>';
+    if (it.spec2_value) out += '<span class="si-cat-badge">' + escapeHtml(it.spec2_name || '規格2') + ': ' + escapeHtml(it.spec2_value) + '</span>';
+    else if (it.sizes) out += '<span class="si-cat-badge">' + escapeHtml(it.sizes) + '</span>';
+    return out;
+  }
+
+  function specLabelText(it) {
+    var parts = [];
+    if (it.spec1_value) parts.push(it.spec1_value); else if (it.color) parts.push(it.color);
+    if (it.spec2_value) parts.push(it.spec2_value); else if (it.sizes) parts.push(it.sizes);
+    return parts.join(' / ');
+  }
+
   function renderTrashList(items) {
     $('trashCount').textContent = items.length;
     var el = $('trashList');
@@ -588,11 +649,12 @@
       return;
     }
     items.forEach(function (it) {
+      var specText = specLabelText(it);
       var row = document.createElement('div');
       row.className = 'trash-item';
       row.innerHTML =
         '<div class="ti-text">' +
-          '<div class="ti-name">' + escapeHtml(it.name || '未命名商品') + (it.sizes ? ' · ' + escapeHtml(it.sizes) : '') + (it.color ? ' · 🎨' + escapeHtml(it.color) : '') + '</div>' +
+          '<div class="ti-name">' + escapeHtml(it.name || '未命名商品') + (specText ? ' · ' + escapeHtml(specText) : '') + '</div>' +
           '<div class="ti-sub">刪除於 ' + formatDateTime(it.deleted_at) + '</div>' +
         '</div>' +
         '<div class="ti-actions">' +
@@ -675,7 +737,7 @@
     row.innerHTML =
       thumbHtml +
       '<div class="si-text">' +
-        '<div class="si-name">' + escapeHtml(it.name || '未命名商品') + '<span class="si-cat-badge">' + escapeHtml(it.category_label) + '</span>' + (it.sizes ? '<span class="si-cat-badge">' + escapeHtml(it.sizes) + '</span>' : '') + (it.color ? '<span class="si-cat-badge">🎨 ' + escapeHtml(it.color) + '</span>' : '') + '</div>' +
+        '<div class="si-name">' + escapeHtml(it.name || '未命名商品') + '<span class="si-cat-badge">' + escapeHtml(it.category_label) + '</span>' + specBadgesHtml(it) + '</div>' +
         '<div class="si-sub">實際成本 NT$' + fmt(it.actual_cost) + ' → 售價 NT$' + fmt(it.final_price) + ' · 淨利率 ' + Math.round(it.margin) + '% · ' + dateStr + '</div>' +
       '</div>' +
       '<div class="si-actions">' +
@@ -724,9 +786,10 @@
     var thumbHtml = thumbUrl ? '<img class="si-thumb" src="' + escapeHtml(thumbUrl) + '" alt="">' : '';
 
     var sizeLinesHtml = items.map(function (it) {
+      var specText = specLabelText(it);
       return '<div class="si-size-line" data-id="' + it.id + '">' +
         '<input type="checkbox" class="si-line-check">' +
-        '<span class="si-size-label">' + escapeHtml(it.sizes || '(無標示尺寸)') + (it.color ? ' 🎨' + escapeHtml(it.color) : '') + '</span>' +
+        '<span class="si-size-label">' + escapeHtml(specText || '(無標示規格)') + '</span>' +
         '<span class="si-size-nums">成本 NT$' + fmt(it.actual_cost) + ' → 售價 NT$' + fmt(it.final_price) + ' · 淨利率 ' + Math.round(it.margin) + '%</span>' +
         '<span class="si-size-actions">' +
           '<button type="button" data-action="edit">編輯</button>' +
@@ -898,240 +961,189 @@
   }
   $('productGroup').addEventListener('input', renderGroupQuickButtons);
 
-  var PRESET_COLORS = ['白', '黑', '灰', '紅', '粉', '黃', '綠', '藍', '紫', '棕', '銀', '金'];
+  /* ---------- 商品規格：無規格／單規格／雙規格，選項自動展開成組合 ---------- */
 
-  function buildColorPicker(selectedColors, onChange) {
-    var wrap = document.createElement('div');
-    wrap.className = 'color-picker';
-    var chipsEl = document.createElement('div');
-    chipsEl.className = 'color-chips';
-    var customInput = document.createElement('input');
-    customInput.type = 'text';
-    customInput.className = 'color-custom-input';
-    customInput.placeholder = '輸入顏色後按 Enter 新增';
-
-    var extraColors = selectedColors.filter(function (c) { return PRESET_COLORS.indexOf(c) === -1; });
-
-    function renderChips() {
-      chipsEl.innerHTML = '';
-      PRESET_COLORS.concat(extraColors).forEach(function (c) {
-        var btn = document.createElement('button');
-        btn.type = 'button';
-        btn.textContent = c;
-        if (selectedColors.indexOf(c) !== -1) btn.className = 'active';
-        btn.addEventListener('click', function () {
-          var idx = selectedColors.indexOf(c);
-          if (idx === -1) selectedColors.push(c); else selectedColors.splice(idx, 1);
-          renderChips();
-          onChange(selectedColors);
-        });
-        chipsEl.appendChild(btn);
-      });
-    }
-    renderChips();
-
-    customInput.addEventListener('keydown', function (ev) {
-      if (ev.key !== 'Enter') return;
-      ev.preventDefault();
-      var val = customInput.value.trim();
-      if (!val) return;
-      if (extraColors.indexOf(val) === -1 && PRESET_COLORS.indexOf(val) === -1) extraColors.push(val);
-      if (selectedColors.indexOf(val) === -1) selectedColors.push(val);
-      customInput.value = '';
-      renderChips();
-      onChange(selectedColors);
+  function parseOptions(str) {
+    var seen = {}; var out = [];
+    (str || '').split(/[,，、]/).forEach(function (s) {
+      s = s.trim();
+      if (!s || seen[s]) return;
+      seen[s] = true;
+      out.push(s);
     });
-
-    wrap.appendChild(chipsEl);
-    wrap.appendChild(customInput);
-    return wrap;
+    return out;
   }
 
-  function mountProductColorPicker() {
-    var container = $('productColorPicker');
-    container.innerHTML = '';
-    container.appendChild(buildColorPicker(productColors, function () {}));
+  function computeCombos() {
+    if (specMode === 0) return [{ key: '', spec1Value: '', spec2Value: '', label: '（無規格）' }];
+    var opts1 = parseOptions($('spec1Options').value);
+    if (specMode === 1) {
+      return opts1.map(function (v) { return { key: v, spec1Value: v, spec2Value: '', label: v }; });
+    }
+    var opts2 = parseOptions($('spec2Options').value);
+    var out = [];
+    opts1.forEach(function (v1) {
+      opts2.forEach(function (v2) {
+        out.push({ key: v1 + '|||' + v2, spec1Value: v1, spec2Value: v2, label: v1 + ' / ' + v2 });
+      });
+    });
+    return out;
   }
 
-  /* ---------- 同一個商品名稱、不同尺寸各自的價錢：extraRows ---------- */
+  function renderSpecSection() {
+    var combos = computeCombos();
+    var multi = specMode > 0 && combos.length > 1;
+    $('specUnifyRow').style.display = multi ? '' : 'none';
+    $('comboPreview').style.display = specMode > 0 ? '' : 'none';
+    $('comboCount').textContent = specMode === 0 ? '單一商品，沒有規格組合' : ('共 ' + combos.length + ' 種組合');
+    $('applyAllCombo').style.display = (!unifyPrice && multi) ? '' : 'none';
 
-  function siblingsOf(name, excludeId) {
-    var n = (name || '').trim().toLowerCase();
-    if (!n) return [];
-    return allSavedItems.filter(function (it) { return (it.name || '').trim().toLowerCase() === n && it.id !== excludeId; });
-  }
+    var listEl = $('comboList');
+    listEl.innerHTML = '';
+    if (specMode === 0) return;
 
-  function toExtraRow(it) {
-    return {
-      dbId: it.id, sizes: it.sizes || '', colors: it.color ? [it.color] : [], cost: Number(it.actual_cost) || 0, price: Number(it.final_price) || 0,
-      rmbPrice: Number(it.rmb_price) || 0, rmbShip: Number(it.rmb_ship) || 0, fxRate: Number(it.fx_rate) || 4.5,
-      crossShip: Number(it.cross_ship) || 0, packaging: Number(it.packaging) || 0, paymentFee: Number(it.payment_fee) || 0,
-      domesticShip: Number(it.domestic_ship) || 0, multiplier: Number(it.multiplier) || 0
-    };
-  }
+    combos.forEach(function (combo) {
+      var override = comboOverrides[combo.key];
+      var excluded = !!(override && override.excluded);
 
-  function renderExtraRows() {
-    var el = $('extraRowList');
-    el.innerHTML = '';
-    extraRows.forEach(function (row, idx) {
-      var item = document.createElement('div');
-      item.className = 'extra-row-item';
+      var row = document.createElement('div');
+      row.className = 'extra-row-item combo-row' + (excluded ? ' combo-excluded' : '');
 
       var wrap = document.createElement('div');
-      wrap.className = 'extra-row';
+      wrap.className = 'extra-row combo-row-main';
 
-      var sizeInput = document.createElement('input');
-      sizeInput.type = 'text'; sizeInput.placeholder = '尺寸'; sizeInput.value = row.sizes;
-      sizeInput.addEventListener('input', function () { row.sizes = sizeInput.value; });
+      var labelEl = document.createElement('span');
+      labelEl.className = 'combo-label';
+      labelEl.textContent = combo.label;
+      wrap.appendChild(labelEl);
 
-      var costInput = document.createElement('input');
-      costInput.type = 'number'; costInput.placeholder = '成本'; costInput.min = '0'; costInput.step = '1'; costInput.value = row.cost;
-      costInput.addEventListener('input', function () { row.cost = Number(costInput.value) || 0; updateInfo(); });
-
-      var priceInput = document.createElement('input');
-      priceInput.type = 'number'; priceInput.placeholder = '售價'; priceInput.min = '0'; priceInput.step = '1'; priceInput.value = row.price;
-      priceInput.addEventListener('input', function () { row.price = Number(priceInput.value) || 0; updateInfo(); });
-
-      var delBtn = document.createElement('button');
-      delBtn.type = 'button'; delBtn.textContent = '✕'; delBtn.title = '刪除這個尺寸';
-      delBtn.addEventListener('click', async function () {
-        if (row.dbId) {
-          delBtn.disabled = true;
-          try {
-            var res = await fetch('/api/priced-items/' + row.dbId, { method: 'DELETE' });
-            if (!res.ok) throw new Error();
-            allSavedItems = allSavedItems.filter(function (x) { return x.id !== row.dbId; });
-            renderSavedList($('searchSaved').value);
-            refreshGroupOptions();
-            loadTrash();
-          } catch (e) { showToast('刪除失敗，請再試一次'); delBtn.disabled = false; return; }
-        }
-        extraRows.splice(idx, 1);
-        renderExtraRows();
-      });
-
-      wrap.appendChild(sizeInput); wrap.appendChild(costInput); wrap.appendChild(priceInput); wrap.appendChild(delBtn);
-
-      var colorsBlock = document.createElement('div');
-      colorsBlock.className = 'extra-row-colors';
-      colorsBlock.appendChild(buildColorPicker(row.colors, function () {}));
-
-      var info = document.createElement('div');
-      info.className = 'extra-row-info';
-
-      function updateInfo() {
-        var suggested = row.multiplier > 0 ? Math.round(row.cost * row.multiplier) : null;
-        var profit = row.price - row.cost;
-        var margin = row.price > 0 ? (profit / row.price * 100) : 0;
-        var cls = 'good';
-        if (profit < 0) cls = 'bad'; else if (margin < 25) cls = 'warn';
-        info.innerHTML =
-          (suggested != null ? '建議售價 NT$' + fmt(suggested) + ' <button type="button" data-action="apply-suggested">套用</button> · ' : '') +
-          '<span class="' + cls + '">淨利 NT$' + fmt(profit) + ' · 淨利率 ' + Math.round(margin) + '%</span>';
-        var applyBtn = info.querySelector('[data-action="apply-suggested"]');
-        if (applyBtn) {
-          applyBtn.addEventListener('click', function () {
-            row.price = suggested;
-            priceInput.value = suggested;
-            updateInfo();
-          });
-        }
+      if (excluded) {
+        var restoreBtn = document.createElement('button');
+        restoreBtn.type = 'button'; restoreBtn.textContent = '還原';
+        restoreBtn.addEventListener('click', function () { override.excluded = false; renderSpecSection(); });
+        wrap.appendChild(restoreBtn);
+        row.appendChild(wrap);
+        listEl.appendChild(row);
+        return;
       }
-      updateInfo();
 
-      item.appendChild(wrap);
-      item.appendChild(colorsBlock);
-      item.appendChild(info);
-      el.appendChild(item);
+      var info;
+      if (!unifyPrice) {
+        if (!override) { override = comboOverrides[combo.key] = { cost: lastState.actualCost, price: lastState.finalPrice }; }
+
+        var costInput = document.createElement('input');
+        costInput.type = 'number'; costInput.placeholder = '成本'; costInput.min = '0'; costInput.step = '1'; costInput.value = override.cost;
+        costInput.addEventListener('input', function () { override.cost = Number(costInput.value) || 0; updateComboInfo(); });
+
+        var priceInput = document.createElement('input');
+        priceInput.type = 'number'; priceInput.placeholder = '售價'; priceInput.min = '0'; priceInput.step = '1'; priceInput.value = override.price;
+        priceInput.addEventListener('input', function () { override.price = Number(priceInput.value) || 0; updateComboInfo(); });
+
+        wrap.appendChild(costInput);
+        wrap.appendChild(priceInput);
+
+        info = document.createElement('div');
+        info.className = 'extra-row-info';
+        function updateComboInfo() {
+          var profit = override.price - override.cost;
+          var margin = override.price > 0 ? (profit / override.price * 100) : 0;
+          var cls = 'good';
+          if (profit < 0) cls = 'bad'; else if (margin < 25) cls = 'warn';
+          info.innerHTML = '<span class="' + cls + '">淨利 NT$' + fmt(profit) + ' · 淨利率 ' + Math.round(margin) + '%</span>';
+        }
+        updateComboInfo();
+      } else {
+        var readout = document.createElement('span');
+        readout.className = 'combo-price-readout';
+        readout.textContent = 'NT$' + fmt(lastState.finalPrice) + '（與主面板同步）';
+        wrap.appendChild(readout);
+      }
+
+      var skipBtn = document.createElement('button');
+      skipBtn.type = 'button'; skipBtn.textContent = '✕'; skipBtn.title = '這次存檔略過這個組合';
+      skipBtn.addEventListener('click', function () {
+        if (!comboOverrides[combo.key]) comboOverrides[combo.key] = {};
+        comboOverrides[combo.key].excluded = true;
+        renderSpecSection();
+      });
+      wrap.appendChild(skipBtn);
+
+      row.appendChild(wrap);
+      if (info) row.appendChild(info);
+      listEl.appendChild(row);
     });
   }
 
-  function clearExtraRows() {
-    extraRows = [];
-    renderExtraRows();
+  function setSpecMode(mode) {
+    specMode = mode;
+    $('specModeNone').classList.toggle('active', mode === 0);
+    $('specMode1').classList.toggle('active', mode === 1);
+    $('specMode2').classList.toggle('active', mode === 2);
+    $('specAxis1').style.display = mode >= 1 ? '' : 'none';
+    $('specAxis2').style.display = mode >= 2 ? '' : 'none';
+    renderSpecSection();
   }
+  $('specModeNone').addEventListener('click', function () { setSpecMode(0); });
+  $('specMode1').addEventListener('click', function () { setSpecMode(1); });
+  $('specMode2').addEventListener('click', function () { setSpecMode(2); });
+  $('spec1Name').addEventListener('input', renderSpecSection);
+  $('spec1Options').addEventListener('input', renderSpecSection);
+  $('spec2Name').addEventListener('input', renderSpecSection);
+  $('spec2Options').addEventListener('input', renderSpecSection);
 
-  $('addExtraRow').addEventListener('click', function () {
-    extraRows.push({
-      dbId: null, sizes: '', colors: productColors.slice(), cost: lastState.actualCost, price: lastState.finalPrice,
-      rmbPrice: num('rmbPrice'), rmbShip: num('rmbShip'), fxRate: num('fxRate'),
-      crossShip: num('crossShip'), packaging: num('packaging'), paymentFee: num('paymentFee'),
-      domesticShip: num('domesticShip'), multiplier: parseFloat(slider.value) || 0
+  function setUnify(val) {
+    unifyPrice = val;
+    $('unifyYes').classList.toggle('active', val);
+    $('unifyNo').classList.toggle('active', !val);
+    renderSpecSection();
+  }
+  $('unifyYes').addEventListener('click', function () { setUnify(true); });
+  $('unifyNo').addEventListener('click', function () { setUnify(false); });
+
+  $('applyAllCombo').addEventListener('click', function () {
+    computeCombos().forEach(function (combo) {
+      var existing = comboOverrides[combo.key];
+      if (existing && existing.excluded) return;
+      comboOverrides[combo.key] = Object.assign({}, existing, { cost: lastState.actualCost, price: lastState.finalPrice, excluded: false });
     });
-    renderExtraRows();
-    $('loadSiblingsHint').style.display = 'none';
-    var rows = $('extraRowList').querySelectorAll('.extra-row');
-    var lastRow = rows[rows.length - 1];
-    if (lastRow) lastRow.querySelector('input[type="text"]').focus();
+    renderSpecSection();
   });
 
-  function checkSiblings() {
-    var name = $('productName').value.trim();
-    var hintEl = $('loadSiblingsHint');
-    if (!name || extraRows.length > 0) { hintEl.style.display = 'none'; return; }
-    var matches = siblingsOf(name, editingId);
-    if (matches.length === 0) { hintEl.style.display = 'none'; return; }
-    hintEl.style.display = '';
-    $('siblingsProductName').textContent = name;
-    $('siblingsCount').textContent = matches.length;
+  function resetSpecState() {
+    comboOverrides = {};
+    $('spec1Name').value = ''; $('spec1Options').value = '';
+    $('spec2Name').value = ''; $('spec2Options').value = '';
+    setSpecMode(0);
+    setUnify(true);
   }
-  $('productName').addEventListener('input', checkSiblings);
 
-  $('loadSiblingsBtn').addEventListener('click', function () {
-    var matches = siblingsOf($('productName').value, editingId);
-    extraRows = matches.map(toExtraRow);
-    renderExtraRows();
-    $('loadSiblingsHint').style.display = 'none';
-    showToast('已載入 ' + matches.length + ' 筆尺寸資料，改完記得按「加入清單」一起存檔');
-  });
-
-  function extraRowPayload(row) {
-    var chinaCost = (row.rmbPrice + row.rmbShip) * row.fxRate;
-    var margin = row.price > 0 ? ((row.price - row.cost) / row.price * 100) : 0;
+  function comboPayload(combo, override) {
+    var cost = unifyPrice ? lastState.actualCost : (override ? override.cost : lastState.actualCost);
+    var price = unifyPrice ? lastState.finalPrice : (override ? override.price : lastState.finalPrice);
+    var margin = price > 0 ? ((price - cost) / price * 100) : 0;
     return {
       name: $('productName').value.trim(),
-      sizes: row.sizes.trim(),
       sortGroup: $('productGroup').value.trim(),
       itemNo: $('productItemNo').value.trim(),
       categoryKey: currentCategory ? currentCategory.key : '',
       categoryLabel: currentCategory ? currentCategory.label : '未分類',
-      rmbPrice: row.rmbPrice, rmbShip: row.rmbShip, fxRate: row.fxRate,
-      crossShip: row.crossShip, packaging: row.packaging, paymentFee: row.paymentFee,
-      domesticShip: row.domesticShip, multiplier: row.multiplier,
-      manualPrice: row.price,
-      chinaCost: chinaCost, actualCost: row.cost, finalPrice: row.price,
-      profit: row.price - row.cost, margin: margin,
-      photoUrl: currentPhotoUrl
+      rmbPrice: num('rmbPrice'), rmbShip: num('rmbShip'), fxRate: num('fxRate'),
+      crossShip: num('crossShip'), packaging: num('packaging'), paymentFee: num('paymentFee'),
+      domesticShip: num('domesticShip'),
+      multiplier: parseFloat(slider.value) || 0,
+      manualPrice: unifyPrice ? manualPrice.value.trim() : price,
+      chinaCost: lastState.chinaCost, actualCost: cost, finalPrice: price,
+      profit: price - cost, margin: margin,
+      photoUrl: currentPhotoUrl,
+      spec1Name: specMode >= 1 ? $('spec1Name').value.trim() : '',
+      spec1Value: combo.spec1Value || '',
+      spec2Name: specMode >= 2 ? $('spec2Name').value.trim() : '',
+      spec2Value: combo.spec2Value || ''
     };
-  }
-
-  async function saveExtraRows() {
-    for (var i = 0; i < extraRows.length; i++) {
-      var row = extraRows[i];
-      var baseFields = extraRowPayload(row);
-      var colorList = row.colors && row.colors.length ? row.colors : [''];
-      for (var j = 0; j < colorList.length; j++) {
-        var payload = Object.assign({}, baseFields, { color: colorList[j] });
-        var useExisting = j === 0 && row.dbId;
-        var res = await fetch(useExisting ? '/api/priced-items/' + row.dbId : '/api/priced-items', {
-          method: useExisting ? 'PUT' : 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        if (!res.ok) throw new Error();
-        var saved = await res.json();
-        if (j === 0) row.dbId = saved.id;
-        var idx = allSavedItems.findIndex(function (x) { return x.id === saved.id; });
-        if (idx !== -1) allSavedItems[idx] = saved; else allSavedItems.unshift(saved);
-      }
-    }
   }
 
   function fillFormFromItem(it) {
     $('productName').value = it.name || '';
-    $('productSizes').value = it.sizes || '';
-    productColors = it.color ? [it.color] : [];
-    mountProductColorPicker();
     $('productGroup').value = it.sort_group || '';
     $('productItemNo').value = it.item_no != null ? it.item_no : '';
     $('rmbPrice').value = it.rmb_price;
@@ -1154,8 +1166,14 @@
     clearPhoto();
     fillFormFromItem(it);
     $('productItemNo').value = '';
-    clearExtraRows();
-    checkSiblings();
+    resetSpecState();
+    if (it.spec1_value) {
+      var mode = it.spec2_value ? 2 : 1;
+      $('spec1Name').value = it.spec1_name || '';
+      $('spec1Options').value = it.spec1_value;
+      if (mode === 2) { $('spec2Name').value = it.spec2_name || ''; $('spec2Options').value = it.spec2_value; }
+      setSpecMode(mode);
+    }
   }
 
   function editItem(it) {
@@ -1172,9 +1190,61 @@
     $('editBannerName').textContent = it.name || '未命名商品';
     $('editBanner').style.display = '';
     $('saveItem').textContent = '💾 儲存修改';
-    extraRows = siblingsOf(it.name, it.id).map(toExtraRow);
-    renderExtraRows();
-    $('loadSiblingsHint').style.display = 'none';
+
+    var nameKey = (it.name || '').trim().toLowerCase();
+    var group = allSavedItems.filter(function (x) { return (x.name || '').trim().toLowerCase() === nameKey; });
+    if (group.length === 0) group = [it];
+
+    /* 舊資料(還沒跑過轉換 SQL)可能只有 color 或只有 sizes 有值；
+       這裡各自 fallback 一次，並且「單規格」時，不管實際資料是落在哪一欄，都統一收進畫面上的規格1，避免漏掉舊資料。 */
+    var rowsA = group.map(function (x) { return x.spec1_value || x.color || ''; });
+    var rowsB = group.map(function (x) { return x.spec2_value || x.sizes || ''; });
+    var hasA = rowsA.some(Boolean);
+    var hasB = rowsB.some(Boolean);
+
+    var mode, useAxis;
+    if (hasA && hasB) { mode = 2; }
+    else if (hasA) { mode = 1; useAxis = 'A'; }
+    else if (hasB) { mode = 1; useAxis = 'B'; }
+    else { mode = 0; }
+
+    comboOverrides = {};
+    var opts1Order = [], opts1Seen = {};
+    var opts2Order = [], opts2Seen = {};
+    var spec1NameVal = '', spec2NameVal = '';
+
+    group.forEach(function (x, i) {
+      var vA = rowsA[i], vB = rowsB[i];
+      var key;
+      if (mode === 2) {
+        key = vA + '|||' + vB;
+        if (vA && !opts1Seen[vA]) { opts1Seen[vA] = true; opts1Order.push(vA); }
+        if (vB && !opts2Seen[vB]) { opts2Seen[vB] = true; opts2Order.push(vB); }
+        if (x.spec1_name) spec1NameVal = x.spec1_name; else if (x.color && !spec1NameVal) spec1NameVal = '顏色';
+        if (x.spec2_name) spec2NameVal = x.spec2_name; else if (x.sizes && !spec2NameVal) spec2NameVal = '尺寸';
+      } else if (mode === 1) {
+        var v = useAxis === 'A' ? vA : vB;
+        key = v;
+        if (v && !opts1Seen[v]) { opts1Seen[v] = true; opts1Order.push(v); }
+        if (useAxis === 'A') { if (x.spec1_name) spec1NameVal = x.spec1_name; else if (x.color && !spec1NameVal) spec1NameVal = '顏色'; }
+        else { if (x.spec2_name) spec1NameVal = x.spec2_name; else if (x.sizes && !spec1NameVal) spec1NameVal = '尺寸'; }
+      } else {
+        key = '';
+      }
+      comboOverrides[key] = { dbId: x.id, cost: Number(x.actual_cost) || 0, price: Number(x.final_price) || 0, excluded: false };
+    });
+
+    $('spec1Name').value = spec1NameVal;
+    $('spec1Options').value = opts1Order.join('、');
+    $('spec2Name').value = spec2NameVal;
+    $('spec2Options').value = opts2Order.join('、');
+
+    var costs = group.map(function (x) { return Number(x.actual_cost) || 0; });
+    var prices = group.map(function (x) { return Number(x.final_price) || 0; });
+    var allSame = costs.every(function (c) { return c === costs[0]; }) && prices.every(function (p) { return p === prices[0]; });
+
+    setSpecMode(mode);
+    setUnify(allSame || mode === 0);
   }
 
   function exitEditMode() {
@@ -1183,7 +1253,7 @@
     $('saveItem').textContent = '💾 加入清單';
   }
 
-  $('cancelEdit').addEventListener('click', function () { exitEditMode(); clearExtraRows(); checkSiblings(); });
+  $('cancelEdit').addEventListener('click', function () { exitEditMode(); resetSpecState(); });
 
   fields.forEach(function (id) {
     $(id).addEventListener('input', function () {
@@ -1205,17 +1275,13 @@
     exitEditMode();
     clearPhoto();
     $('productName').value = '範例商品';
-    $('productSizes').value = '';
-    productColors = [];
-    mountProductColorPicker();
     $('productGroup').value = '';
     $('productItemNo').value = '';
     $('rmbPrice').value = 20; $('rmbShip').value = 0; $('fxRate').value = 4.5;
     $('crossShip').value = 15; $('packaging').value = 5; $('paymentFee').value = 10; $('domesticShip').value = 60;
     manualPrice.value = '';
     setCategory(catDefs[1]);
-    clearExtraRows();
-    checkSiblings();
+    resetSpecState();
     renderGroupQuickButtons();
   });
 
@@ -1225,9 +1291,6 @@
     fields.forEach(function (id) { $(id).value = ''; });
     $('fxRate').value = 4.5;
     $('productName').value = '';
-    $('productSizes').value = '';
-    productColors = [];
-    mountProductColorPicker();
     $('productGroup').value = '';
     $('productItemNo').value = '';
     manualPrice.value = '';
@@ -1236,62 +1299,50 @@
     slider.min = 1.4; slider.max = 1.6; slider.value = 1.5;
     $('sliderMinLabel').textContent = '1.40×'; $('sliderMaxLabel').textContent = '1.60×';
     recalc();
-    clearExtraRows();
-    checkSiblings();
+    resetSpecState();
     renderGroupQuickButtons();
   });
 
   $('saveItem').addEventListener('click', async function () {
-    var baseFields = {
-      name: $('productName').value.trim(),
-      sizes: $('productSizes').value.trim(),
-      sortGroup: $('productGroup').value.trim(),
-      itemNo: $('productItemNo').value.trim(),
-      categoryKey: currentCategory ? currentCategory.key : '',
-      categoryLabel: currentCategory ? currentCategory.label : '未分類',
-      rmbPrice: num('rmbPrice'), rmbShip: num('rmbShip'), fxRate: num('fxRate'),
-      crossShip: num('crossShip'), packaging: num('packaging'), paymentFee: num('paymentFee'),
-      domesticShip: num('domesticShip'),
-      multiplier: parseFloat(slider.value) || 0,
-      manualPrice: manualPrice.value.trim(),
-      chinaCost: lastState.chinaCost, actualCost: lastState.actualCost, finalPrice: lastState.finalPrice,
-      profit: lastState.profit, margin: lastState.margin,
-      photoUrl: currentPhotoUrl
-    };
+    var combos = computeCombos().filter(function (c) {
+      var o = comboOverrides[c.key];
+      return !(o && o.excluded);
+    });
+    if (combos.length === 0) {
+      showToast(specMode === 0 ? '請先填成本資料' : '至少要保留一個規格組合，或選「無規格」');
+      return;
+    }
+    if (specMode >= 1 && !$('spec1Name').value.trim()) { showToast('請填規格1名稱'); return; }
+    if (specMode >= 2 && !$('spec2Name').value.trim()) { showToast('請填規格2名稱'); return; }
+
     var btn = $('saveItem');
     var isEditing = !!editingId;
     var original = btn.textContent;
     btn.disabled = true;
     try {
-      var mainColorList = productColors.length ? productColors : [''];
-      for (var i = 0; i < mainColorList.length; i++) {
-        var payload = Object.assign({}, baseFields, { color: mainColorList[i] });
-        var useExisting = i === 0 && isEditing;
-        var res = await fetch(useExisting ? '/api/priced-items/' + editingId : '/api/priced-items', {
-          method: useExisting ? 'PUT' : 'POST',
+      for (var i = 0; i < combos.length; i++) {
+        var combo = combos[i];
+        var override = comboOverrides[combo.key];
+        var payload = comboPayload(combo, override);
+        var dbId = override && override.dbId;
+        var res = await fetch(dbId ? '/api/priced-items/' + dbId : '/api/priced-items', {
+          method: dbId ? 'PUT' : 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
         if (!res.ok) throw new Error();
         var saved = await res.json();
+        comboOverrides[combo.key] = Object.assign({}, override, { dbId: saved.id, cost: Number(saved.actual_cost) || 0, price: Number(saved.final_price) || 0 });
         var idx = allSavedItems.findIndex(function (x) { return x.id === saved.id; });
         if (idx !== -1) allSavedItems[idx] = saved; else allSavedItems.unshift(saved);
       }
 
-      var extraCount = 0;
-      extraRows.forEach(function (r) { extraCount += (r.colors && r.colors.length ? r.colors.length : 1); });
-      if (extraRows.length > 0) { await saveExtraRows(); }
-
       if (isEditing) { exitEditMode(); }
-      var totalCount = mainColorList.length + extraCount;
-      showToast(totalCount > 1 ? '已一次存好 ' + totalCount + ' 筆' : (isEditing ? '已更新' : '已加入清單'));
+      showToast(combos.length > 1 ? '已一次存好 ' + combos.length + ' 筆' : (isEditing ? '已更新' : '已加入清單'));
 
-      productColors = [];
-      mountProductColorPicker();
-      clearExtraRows();
+      resetSpecState();
       renderSavedList($('searchSaved').value);
       refreshGroupOptions();
-      checkSiblings();
       renderGroupQuickButtons();
     } catch (e) {
       showToast('儲存失敗，請檢查網路後再試一次，剛剛存成功的部分不會重複存');
@@ -1305,7 +1356,7 @@
 
   recalc();
   renderGroupQuickButtons();
-  mountProductColorPicker();
+  setSpecMode(0);
   try {
     var qProduct = new URLSearchParams(window.location.search).get('product');
     if (qProduct) { $('productName').value = qProduct; }
@@ -1314,7 +1365,6 @@
     allSavedItems = items;
     renderSavedList('');
     refreshGroupOptions();
-    checkSiblings();
   }).catch(function () {
     $('savedList').innerHTML = '<p class="empty-state">清單載入失敗，請重新整理頁面再試一次。</p>';
   });

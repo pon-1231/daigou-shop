@@ -557,11 +557,11 @@
     return order.map(function (name) { return { name: name, variants: byName[name] }; });
   }
 
-  function pickerOptionLabel(size, color) {
+  function pickerOptionLabel(size, color, spec1Name) {
     var parts = [];
     if (size) parts.push(size);
-    if (color) parts.push('🎨' + color);
-    return parts.length ? parts.join(' ') : '(無標示尺寸)';
+    if (color) parts.push(spec1Name ? (spec1Name + ':' + color) : ('🎨' + color));
+    return parts.length ? parts.join(' ') : '(無標示規格)';
   }
 
   function combineSizeColor(size, color) {
@@ -709,7 +709,7 @@
       var selectBtn = document.createElement('button');
       selectBtn.type = 'button';
       selectBtn.className = 'sp-option-select';
-      selectBtn.textContent = pickerOptionLabel(opt.size, opt.product.color) + ' · NT$' + fmt(opt.product.final_price);
+      selectBtn.textContent = pickerOptionLabel(opt.size, opt.product.color, opt.product.spec1_name) + ' · NT$' + fmt(opt.product.final_price);
       selectBtn.addEventListener('click', function () {
         addProductToCart(opt.product, opt.size);
         closeSizePicker();

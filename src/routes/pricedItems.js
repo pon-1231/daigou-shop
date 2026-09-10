@@ -44,8 +44,12 @@ function buildRow(body) {
     profit: Number(body.profit) || 0,
     margin: Number(body.margin) || 0,
     photo_url: body.photoUrl || null,
-    sizes: body.sizes ? String(body.sizes).slice(0, 200) : null,
-    color: body.color ? String(body.color).slice(0, 100) : null,
+    sizes: body.spec2Value ? String(body.spec2Value).slice(0, 200) : (body.sizes ? String(body.sizes).slice(0, 200) : null),
+    color: body.spec1Value ? String(body.spec1Value).slice(0, 100) : (body.color ? String(body.color).slice(0, 100) : null),
+    spec1_name: body.spec1Name ? String(body.spec1Name).slice(0, 25) : null,
+    spec1_value: body.spec1Value ? String(body.spec1Value).slice(0, 50) : null,
+    spec2_name: body.spec2Name ? String(body.spec2Name).slice(0, 25) : null,
+    spec2_value: body.spec2Value ? String(body.spec2Value).slice(0, 50) : null,
     sort_group: body.sortGroup ? String(body.sortGroup).slice(0, 50) : null,
     item_no: body.itemNo === '' || body.itemNo == null ? null : Math.round(Number(body.itemNo))
   };
