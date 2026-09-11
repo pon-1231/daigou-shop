@@ -151,6 +151,9 @@ where not exists (select 1 from order_items where order_items.order_id = sales_r
 -- 這個工具是後端(Express 伺服器)用 service_role 金鑰連線,不會把 Supabase 金鑰交給瀏覽器,
 -- 所以不需要另外設定 RLS 政策;service_role 本來就會繞過 RLS。
 
+-- 6b. 登入狀態(session)表 —— 不用手動建，伺服器啟動時 connect-pg-simple 會自動建立(createTableIfMissing)。
+--     這裡只是留紀錄：表名叫 session，欄位是 sid/sess/expire，跟這個工具本身的資料無關，可以放著不用管。
+
 -- 6. 照片儲存空間(Storage bucket)
 -- SQL Editor 沒辦法建立 bucket,請改在左側選單「Storage」手動建立:
 --   Bucket 名稱:sales-photos

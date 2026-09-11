@@ -14,7 +14,22 @@ const PORT = process.env.PORT || 3100;
 
 app.set('trust proxy', 1);
 
-app.use(session({
+// 登入狀態(session)存到 Supabase 的 Postgres 裡，這樣伺服器重開/休眠不會把大家登出。
+// 沒設定 DATABASE_URL 時 fallback 回預設的記憶體 store，至少本機還能跑，只是伺服器重開會登出。
+let sessionStore;
+if (process.env.DATABASE_URL) {
+  const { Pool } = require('pg');
+  const pgSession = require('connect-pg-simple')(session);
+  const pgPool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false }
+  });
+  sessionStore = new pgSession({ pool: pgPool, tableName: 'session', createTableIfMissing: true });
+} else {
+  console.warn('[session] 尚未設定 DATABASE_URL，登入狀態會存在記憶體，伺服器重啟或休眠就會把大家登出。');
+}
+
+const sessionConfig = {
   secret: process.env.SESSION_SECRET || 'dev-secret-change-me',
   resave: false,
   saveUninitialized: false,
@@ -22,7 +37,9 @@ app.use(session({
     maxAge: 1000 * 60 * 60 * 24 * 30,
     secure: process.env.NODE_ENV === 'production'
   }
-}));
+};
+if (sessionStore) sessionConfig.store = sessionStore;
+app.use(session(sessionConfig));
 
 app.use(express.json({ limit: '2mb' }));
 

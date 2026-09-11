@@ -20,6 +20,7 @@
 5. 左側選單找「Project Settings → API」，會看到：
    - `Project URL`（等一下填到 `SUPABASE_URL`）
    - `service_role` 金鑰（等一下填到 `SUPABASE_SERVICE_KEY`，**這組金鑰不要外流、不要放到會公開的地方**）
+6. 左側選單找「Project Settings → Database → Connection string」，選「Session pooler」那個 URI，把裡面的 `[YOUR-PASSWORD]` 換成你在步驟 2 記下的資料庫密碼（等一下填到 `DATABASE_URL`）
 
 ### 2. 設定環境變數
 
@@ -28,6 +29,7 @@
    - `APP_PASSWORD`：你想給朋友用的登入密碼
    - `SESSION_SECRET`：隨便打一長串英數字（例如 32 個亂碼字元）
    - `SUPABASE_URL` / `SUPABASE_SERVICE_KEY`：貼上一步拿到的值
+   - `DATABASE_URL`：貼上一步拿到的 Connection string（這個讓登入狀態存進資料庫，伺服器重開/休眠不會把大家登出；沒填也能跑，只是會比較常需要重新登入）
 
 ### 3. 安裝套件並在本機測試
 
@@ -43,7 +45,7 @@ npm start
 1. 這個資料夾建一個新的 GitHub repo（跟 peter agent 分開，不要共用）
 2. 到 [render.com](https://render.com)，New → Web Service，選這個 repo
 3. Build Command 留空（沒有前端打包步驟），Start Command 填 `npm start`
-4. 在 Render 的 Environment 分頁，把 `.env` 裡的四個變數（`APP_PASSWORD`、`SESSION_SECRET`、`SUPABASE_URL`、`SUPABASE_SERVICE_KEY`）都加進去 —— **不要把 `.env` 檔案傳上 GitHub**，`.gitignore` 已經排除了
+4. 在 Render 的 Environment 分頁，把 `.env` 裡的五個變數（`APP_PASSWORD`、`SESSION_SECRET`、`SUPABASE_URL`、`SUPABASE_SERVICE_KEY`、`DATABASE_URL`）都加進去 —— **不要把 `.env` 檔案傳上 GitHub**，`.gitignore` 已經排除了
 5. 部署完成後，Render 會給一個網址，把那個網址傳給朋友，密碼另外用其他管道（例如當面講、LINE 私訊）告訴她，不要寫在網址裡
 
 ## 檔案結構
