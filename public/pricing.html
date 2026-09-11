@@ -1463,6 +1463,16 @@
     if (specMode >= 1 && !$('spec1Name').value.trim()) { showToast('請填規格1名稱'); return; }
     if (specMode >= 2 && !$('spec2Name').value.trim()) { showToast('請填規格2名稱'); return; }
 
+    /* 編輯時如果把某個選項從文字裡刪掉、或按了略過，那個選項原本存過的那一筆要跟著刪除，
+       不然只是這次存檔沒去動它、資料庫裡還留著，畫面上看起來像「刪了但沒生效」。 */
+    var keptKeys = {};
+    combos.forEach(function (c) { keptKeys[c.key] = true; });
+    var idsToDelete = [];
+    Object.keys(comboOverrides).forEach(function (key) {
+      var o = comboOverrides[key];
+      if (o && o.dbId && !keptKeys[key]) idsToDelete.push(o.dbId);
+    });
+
     var btn = $('saveItem');
     var isEditing = !!editingId;
     var original = btn.textContent;
@@ -1485,8 +1495,16 @@
         if (idx !== -1) allSavedItems[idx] = saved; else allSavedItems.unshift(saved);
       }
 
+      for (var j = 0; j < idsToDelete.length; j++) {
+        var delRes = await fetch('/api/priced-items/' + idsToDelete[j], { method: 'DELETE' });
+        if (delRes.ok) allSavedItems = allSavedItems.filter(function (x) { return x.id !== idsToDelete[j]; });
+      }
+      if (idsToDelete.length > 0) loadTrash();
+
       if (isEditing) { exitEditMode(); }
-      showToast(combos.length > 1 ? '已一次存好 ' + combos.length + ' 筆' : (isEditing ? '已更新' : '已加入清單'));
+      var msg = combos.length > 1 ? '已一次存好 ' + combos.length + ' 筆' : (isEditing ? '已更新' : '已加入清單');
+      if (idsToDelete.length > 0) msg += '，並刪除 ' + idsToDelete.length + ' 筆（可在下方「最近刪除」還原）';
+      showToast(msg);
 
       resetSpecState();
       renderSavedList($('searchSaved').value);
