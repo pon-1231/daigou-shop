@@ -1321,7 +1321,9 @@
     $('saveItem').textContent = '💾 儲存修改';
 
     var nameKey = (it.name || '').trim().toLowerCase();
-    var group = allSavedItems.filter(function (x) { return (x.name || '').trim().toLowerCase() === nameKey; });
+    /* 這裡要跟畫面上的顯示排序(sortByItemNo)一致，不然編輯框裡選項的順序會跟畫面上看到的badge順序不一樣，
+       看起來像是「改了順序沒有生效」——其實只是編輯框一開始就顯示錯的順序。 */
+    var group = sortByItemNo(allSavedItems.filter(function (x) { return (x.name || '').trim().toLowerCase() === nameKey; }));
     if (group.length === 0) group = [it];
 
     /* 舊資料(還沒跑過轉換 SQL)可能只有 color 或只有 sizes 有值；
