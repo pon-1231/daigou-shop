@@ -272,13 +272,15 @@
   .combo-preview { margin-top: 6px; }
   .combo-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
   .combo-count { font-family: var(--font-mono); font-size: 12px; color: var(--ink-soft); }
+  .combo-select-all-label { display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--ink-soft); cursor: pointer; }
   .combo-row-main { grid-template-columns: 1fr auto auto auto; }
+  .combo-row-main.combo-row-checkable { grid-template-columns: auto 1fr auto auto auto; }
   .combo-row-main .combo-label { font-size: 13.5px; font-weight: 600; }
   .combo-price-readout { font-family: var(--font-mono); font-size: 12px; color: var(--ink-soft); white-space: nowrap; }
   .combo-excluded { opacity: 0.55; }
   .combo-excluded .extra-row { grid-template-columns: 1fr auto; }
   .combo-excluded .combo-label { text-decoration: line-through; }
-  @media (max-width: 480px) { .combo-row-main { grid-template-columns: 1fr; } }
+  @media (max-width: 480px) { .combo-row-main, .combo-row-main.combo-row-checkable { grid-template-columns: auto 1fr; } }
 </style>
 </head>
 <body>
@@ -355,6 +357,7 @@
           <div class="combo-preview" id="comboPreview" style="display:none;">
             <div class="combo-head">
               <span class="combo-count" id="comboCount">共 0 種組合</span>
+              <label class="combo-select-all-label" id="comboSelectAllLabel" style="display:none;"><input type="checkbox" id="comboSelectAll"> 全選</label>
               <button type="button" class="btn small" id="applyAllCombo" style="display:none;">全部套用目前成本/售價</button>
             </div>
             <div class="extra-row-list" id="comboList"></div>
@@ -1033,7 +1036,7 @@
 
   function renderSavedList(filter) {
     filter = (filter || '').trim().toLowerCase();
-    $('savedCount').textContent = allSavedItems.length;
+    $('savedCount').textContent = groupByName(allSavedItems).length;
     var items = filter ? allSavedItems.filter(function (it) { return (it.name || '').toLowerCase().indexOf(filter) !== -1; }) : allSavedItems;
 
     var listEl = $('savedList');
@@ -1127,11 +1130,16 @@
     $('specUnifyRow').style.display = multi ? '' : 'none';
     $('comboPreview').style.display = specMode > 0 ? '' : 'none';
     $('comboCount').textContent = specMode === 0 ? '單一商品，沒有規格組合' : ('共 ' + combos.length + ' 種組合');
-    $('applyAllCombo').style.display = (!unifyPrice && multi) ? '' : 'none';
+
+    var showBulkUi = !unifyPrice && multi;
+    $('applyAllCombo').style.display = showBulkUi ? '' : 'none';
+    $('comboSelectAllLabel').style.display = showBulkUi ? '' : 'none';
 
     var listEl = $('comboList');
     listEl.innerHTML = '';
     if (specMode === 0) return;
+
+    var checkableCount = 0, checkedCount = 0;
 
     combos.forEach(function (combo) {
       var override = comboOverrides[combo.key];
@@ -1141,7 +1149,18 @@
       row.className = 'extra-row-item combo-row' + (excluded ? ' combo-excluded' : '');
 
       var wrap = document.createElement('div');
-      wrap.className = 'extra-row combo-row-main';
+      wrap.className = 'extra-row combo-row-main' + (!unifyPrice && !excluded ? ' combo-row-checkable' : '');
+
+      if (!unifyPrice && !excluded) {
+        if (!override) { override = comboOverrides[combo.key] = { cost: lastState.actualCost, price: lastState.finalPrice }; }
+        checkableCount++;
+        if (override.checked) checkedCount++;
+        var checkEl = document.createElement('input');
+        checkEl.type = 'checkbox'; checkEl.className = 'combo-check';
+        checkEl.checked = !!override.checked;
+        checkEl.addEventListener('change', function () { override.checked = checkEl.checked; renderSpecSection(); });
+        wrap.appendChild(checkEl);
+      }
 
       var labelEl = document.createElement('span');
       labelEl.className = 'combo-label';
@@ -1160,8 +1179,6 @@
 
       var info;
       if (!unifyPrice) {
-        if (!override) { override = comboOverrides[combo.key] = { cost: lastState.actualCost, price: lastState.finalPrice }; }
-
         var costInput = document.createElement('input');
         costInput.type = 'number'; costInput.placeholder = '成本'; costInput.min = '0'; costInput.step = '1'; costInput.value = override.cost;
         costInput.addEventListener('input', function () { override.cost = Number(costInput.value) || 0; updateComboInfo(); });
@@ -1203,6 +1220,15 @@
       if (info) row.appendChild(info);
       listEl.appendChild(row);
     });
+
+    if (showBulkUi) {
+      var selectAllEl = $('comboSelectAll');
+      selectAllEl.checked = checkableCount > 0 && checkedCount === checkableCount;
+      selectAllEl.indeterminate = checkedCount > 0 && checkedCount < checkableCount;
+      $('applyAllCombo').textContent = checkedCount > 0
+        ? ('套用到勾選的目前成本/售價（' + checkedCount + '）')
+        : '全部套用目前成本/售價';
+    }
   }
 
   function setSpecMode(mode) {
@@ -1231,8 +1257,22 @@
   $('unifyYes').addEventListener('click', function () { setUnify(true); });
   $('unifyNo').addEventListener('click', function () { setUnify(false); });
 
-  $('applyAllCombo').addEventListener('click', function () {
+  $('comboSelectAll').addEventListener('change', function () {
+    var checked = this.checked;
     computeCombos().forEach(function (combo) {
+      var existing = comboOverrides[combo.key];
+      if (existing && existing.excluded) return;
+      if (!existing) existing = comboOverrides[combo.key] = { cost: lastState.actualCost, price: lastState.finalPrice };
+      existing.checked = checked;
+    });
+    renderSpecSection();
+  });
+
+  $('applyAllCombo').addEventListener('click', function () {
+    var combos = computeCombos();
+    var checkedCombos = combos.filter(function (c) { var o = comboOverrides[c.key]; return o && o.checked && !o.excluded; });
+    var targets = checkedCombos.length > 0 ? checkedCombos : combos;
+    targets.forEach(function (combo) {
       var existing = comboOverrides[combo.key];
       if (existing && existing.excluded) return;
       comboOverrides[combo.key] = Object.assign({}, existing, { cost: lastState.actualCost, price: lastState.finalPrice, excluded: false });
