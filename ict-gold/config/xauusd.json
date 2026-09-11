@@ -1,0 +1,183 @@
+{
+  "symbol": {
+    "name": "XAUUSD",
+    "contract_size": 100.0,
+    "min_lot": 0.01,
+    "lot_step": 0.01,
+    "max_lot": 50.0,
+    "tick": 0.01
+  },
+  "costs": {
+    "spread": 0.3,
+    "slippage_entry": 0.1,
+    "slippage_stop": 0.25,
+    "commission_per_lot": 7.0
+  },
+  "risk": {
+    "starting_equity": 10000.0,
+    "risk_per_trade_pct": 0.5,
+    "max_trades_per_day": 3,
+    "max_concurrent": 1,
+    "daily_loss_limit_r": 2.0,
+    "max_stop_atr": 3.0,
+    "min_stop_atr": 0.8,
+    "min_stop_cost_mult": 4.0,
+    "breakeven_at_r": 1.0,
+    "partial_at_r": null,
+    "partial_fraction": 0.5,
+    "target_max_atr": 12.0,
+    "max_hold_bars": 288,
+    "flat_by_ny_hour": 16
+  },
+  "model": {
+    "swing_lookback": 2,
+    "atr_period": 14,
+    "equal_tol_atr": 0.15,
+    "equal_lookback": 40,
+    "displacement_body_ratio": 0.5,
+    "displacement_atr_mult": 1.0,
+    "ob_search_bars": 12,
+    "max_age_bars": 600,
+    "sweep_max_close_back": 1,
+    "fvg_min_atr": 0.05
+  },
+  "htf_model": {
+    "swing_lookback": 2,
+    "atr_period": 14,
+    "equal_tol_atr": 0.15,
+    "equal_lookback": 40,
+    "displacement_body_ratio": 0.5,
+    "displacement_atr_mult": 1.0,
+    "ob_search_bars": 12,
+    "max_age_bars": 600,
+    "sweep_max_close_back": 1,
+    "fvg_min_atr": 0.05
+  },
+  "ltf": "M5",
+  "mtf": "M15",
+  "htf": "H4",
+  "trade_days": [
+    "Mon",
+    "Tue",
+    "Wed",
+    "Thu",
+    "Fri"
+  ],
+  "news_blackout_minutes": 0,
+  "setups": [
+    {
+      "name": "judas_reversal",
+      "enabled": true,
+      "killzones": [
+        "london",
+        "ny_am"
+      ],
+      "require_macro": false,
+      "align_with_htf_bias": true,
+      "allow_counter_trend_on_sweep": true,
+      "require_sweep": true,
+      "sweep_lookback": 24,
+      "min_pool_strength": 2,
+      "require_structure": true,
+      "structure_kinds": [
+        "CHOCH"
+      ],
+      "require_displacement": true,
+      "structure_lookback": 12,
+      "entry_pd": [
+        "fvg",
+        "ob"
+      ],
+      "entry_fill": "ce",
+      "require_zone": "discount",
+      "ote_low": 0.62,
+      "ote_high": 0.79,
+      "stop_from": "sweep_extreme",
+      "stop_buffer_atr": 0.35,
+      "target_mode": "draw",
+      "fixed_rr": 2.0,
+      "min_rr": 2.0,
+      "max_rr": 5.0,
+      "order_valid_bars": 12,
+      "min_score": 0.55,
+      "weight": 1.0
+    },
+    {
+      "name": "silver_bullet",
+      "enabled": true,
+      "killzones": [
+        "sb_am",
+        "sb_pm",
+        "sb_london"
+      ],
+      "require_macro": false,
+      "align_with_htf_bias": true,
+      "allow_counter_trend_on_sweep": false,
+      "require_sweep": true,
+      "sweep_lookback": 12,
+      "min_pool_strength": 1,
+      "require_structure": true,
+      "structure_kinds": [
+        "CHOCH",
+        "BOS"
+      ],
+      "require_displacement": true,
+      "structure_lookback": 8,
+      "entry_pd": [
+        "fvg"
+      ],
+      "entry_fill": "proximal",
+      "require_zone": "any",
+      "ote_low": 0.62,
+      "ote_high": 0.79,
+      "stop_from": "sweep_extreme",
+      "stop_buffer_atr": 0.35,
+      "target_mode": "draw",
+      "fixed_rr": 2.0,
+      "min_rr": 1.8,
+      "max_rr": 5.0,
+      "order_valid_bars": 8,
+      "min_score": 0.5,
+      "weight": 1.0
+    },
+    {
+      "name": "ote_continuation",
+      "enabled": true,
+      "killzones": [
+        "london",
+        "ny_am",
+        "ny_pm"
+      ],
+      "require_macro": false,
+      "align_with_htf_bias": true,
+      "allow_counter_trend_on_sweep": false,
+      "require_sweep": false,
+      "sweep_lookback": 24,
+      "min_pool_strength": 1,
+      "require_structure": true,
+      "structure_kinds": [
+        "BOS"
+      ],
+      "require_displacement": true,
+      "structure_lookback": 20,
+      "entry_pd": [
+        "ote",
+        "fvg",
+        "ob"
+      ],
+      "entry_fill": "ce",
+      "require_zone": "discount",
+      "ote_low": 0.62,
+      "ote_high": 0.79,
+      "stop_from": "structure",
+      "stop_buffer_atr": 0.5,
+      "target_mode": "draw",
+      "fixed_rr": 2.0,
+      "min_rr": 2.5,
+      "max_rr": 5.0,
+      "order_valid_bars": 16,
+      "min_score": 0.6,
+      "weight": 1.0
+    }
+  ]
+}

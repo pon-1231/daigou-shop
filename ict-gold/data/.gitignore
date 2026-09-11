@@ -1,0 +1,5 @@
+# Price data stays out of git: it is large, often licensed, and broker-specific.
+# Put your XAUUSD csv here and point --csv at it.
+*.csv
+*.parquet
+!.gitignore
