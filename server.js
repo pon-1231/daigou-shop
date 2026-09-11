@@ -24,7 +24,10 @@ if (process.env.DATABASE_URL) {
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false }
   });
+  // 沒有這個監聽的話，連線失敗(例如連不到 IPv6)會讓整個 Node process 直接當機。
+  pgPool.on('error', function (err) { console.error('[session] pg pool 連線錯誤：', err.message); });
   sessionStore = new pgSession({ pool: pgPool, tableName: 'session', createTableIfMissing: true });
+  sessionStore.on('error', function (err) { console.error('[session] session store 錯誤：', err.message); });
 } else {
   console.warn('[session] 尚未設定 DATABASE_URL，登入狀態會存在記憶體，伺服器重啟或休眠就會把大家登出。');
 }
