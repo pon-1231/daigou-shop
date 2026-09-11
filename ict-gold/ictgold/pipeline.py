@@ -452,7 +452,18 @@ def stage_risk(ctx: PipelineContext) -> StageOutcome:
     if lots < ctx.cfg.symbol.min_lot:
         return StageOutcome("risk", False, "position size rounds to zero")
 
-    ctx.parts["rr"] = max(0.0, min(1.0, (rr - s.min_rr) / 3.0))
+    if s.target_mode == "draw":
+        # Draw-on-liquidity targets float, so "how far past the minimum" is
+        # real information about how good this particular setup is.
+        ctx.parts["rr"] = max(0.0, min(1.0, (rr - s.min_rr) / 3.0))
+    else:
+        # Fixed target_mode ("rr") makes rr == min_rr by construction on
+        # every signal that reaches this line (anything less already vetoed
+        # above) - the "how far past the minimum" formula would silently
+        # score every trade 0.0 here and quietly drag the whole confluence
+        # score down by this factor's weight for no market reason. Full
+        # credit for clearing the fixed bar is the honest reading.
+        ctx.parts["rr"] = 1.0
     ctx.parts["_final"] = {"entry": entry, "stop": stop, "target": target, "rr": rr,
                            "lots": lots, "risk_usd": risk_usd, "atr": atr}
     return StageOutcome("risk", True,

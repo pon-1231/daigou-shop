@@ -229,6 +229,28 @@ class TestPipelineAndBacktest(unittest.TestCase):
             self.assertLessEqual(planned, t.risk_usd * 1.35,
                                  "position size exceeds the configured risk")
 
+    def test_fixed_rr_setups_score_full_marks_on_the_rr_factor(self):
+        # target_mode="rr" makes reward == dist * fixed_rr by construction,
+        # so rr always equals min_rr on any signal that clears the veto above
+        # it - the score must not quietly grade every such trade 0.0 on this
+        # factor just because it landed exactly on the bar it was built to hit.
+        from ictgold.pipeline import EntryPipeline
+        cfg = self._cfg()
+        for s in cfg.setups:
+            self.assertEqual(s.target_mode, "rr", "test assumes the fixed 1:2R default")
+        pipe = EntryPipeline(cfg)
+        seen_signal = False
+        candles = synthetic_m5(15000, seed=4)
+        ltf, htf = MarketModel(cfg.model), MarketModel(cfg.htf_model)
+        for k in candles:
+            htf.update(k)  # feeding every bar is fine here: only rr scoring is under test
+            ltf.update(k)
+            for r in pipe.run(ltf, htf, 10_000.0):
+                if r.signal is not None:
+                    seen_signal = True
+                    self.assertAlmostEqual(r.signal.evidence["score"]["rr"], 1.0)
+        self.assertTrue(seen_signal, "no signal fired across 15000 bars - widen the smoke test")
+
     def test_stop_respects_the_cost_floor(self):
         cfg = self._cfg()
         floor = (cfg.costs.spread + cfg.costs.slippage_entry + cfg.costs.slippage_stop) \

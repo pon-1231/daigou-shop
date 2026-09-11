@@ -53,8 +53,8 @@
     "sweep_max_close_back": 1,
     "fvg_min_atr": 0.05
   },
-  "ltf": "M5",
-  "mtf": "M15",
+  "ltf": "M15",
+  "mtf": "H1",
   "htf": "H4",
   "trade_days": [
     "Mon",

@@ -180,7 +180,15 @@ def default_setups() -> list[SetupSpec]:
             entry_fill="ce",
             require_zone="discount",
             stop_from="sweep_extreme",
-            target_mode="draw",
+            # Fixed 1:2R rather than "ride to the next liquidity pool". A
+            # pool-based target is truer to ICT, but it is also an unbounded
+            # promise: it can sit 8R away one day and 1.2R away the next, and
+            # you cannot pre-commit to a payoff you cannot state in advance.
+            # A fixed 1:2 is smaller, boring, and - critically - the same
+            # trade every time, which is the only kind you can accumulate a
+            # real sample on.
+            target_mode="rr",
+            fixed_rr=2.0,
             min_rr=2.0,
             order_valid_bars=12,
             min_score=0.55,
@@ -202,8 +210,9 @@ def default_setups() -> list[SetupSpec]:
             entry_fill="proximal",
             require_zone="any",
             stop_from="sweep_extreme",
-            target_mode="draw",
-            min_rr=1.8,
+            target_mode="rr",
+            fixed_rr=2.0,
+            min_rr=2.0,
             order_valid_bars=8,
             min_score=0.5,
         ),
@@ -226,8 +235,9 @@ def default_setups() -> list[SetupSpec]:
             # against the PD array gets picked off by the retest itself.
             stop_from="structure",
             stop_buffer_atr=0.5,
-            target_mode="draw",
-            min_rr=2.5,
+            target_mode="rr",
+            fixed_rr=2.0,
+            min_rr=2.0,
             order_valid_bars=16,
             min_score=0.6,
         ),
