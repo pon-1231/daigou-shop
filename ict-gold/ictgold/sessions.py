@@ -97,3 +97,21 @@ def day_of_week(ts_utc: datetime) -> str:
 
 def is_weekend_gap(prev: datetime, cur: datetime) -> bool:
     return (cur - prev) > timedelta(hours=6)
+
+
+# US high-impact data almost always prints at 08:30 NY (NFP, CPI, retail
+# sales, jobless claims...). This is a blunt, calendar-free proxy: it blocks
+# the same clock slot every trading day, data release or not, rather than
+# only the days something is actually scheduled. It is NOT a real economic
+# calendar - it exists because this codebase has no feed for one. Replace it
+# the day you wire one in.
+_NEWS_ANCHOR = time(8, 30)
+
+
+def in_news_blackout(ts_utc: datetime, minutes: int) -> bool:
+    if minutes <= 0:
+        return False
+    local = ts_utc.astimezone(NY)
+    anchor = local.replace(hour=_NEWS_ANCHOR.hour, minute=_NEWS_ANCHOR.minute,
+                           second=0, microsecond=0)
+    return abs((local - anchor).total_seconds()) <= minutes * 60

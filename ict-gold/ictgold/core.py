@@ -61,6 +61,18 @@ class Candle:
         r = self.range
         return self.body / r if r > 0 else 0.0
 
+    @property
+    def lower_wick(self) -> float:
+        """Distance from the body's bottom down to the low: a rejection wick
+        when price dipped into a level below and got bought back up."""
+        return self.body_low - self.low
+
+    @property
+    def upper_wick(self) -> float:
+        """Mirror of lower_wick: a rejection wick when price poked above a
+        level and got sold back down."""
+        return self.high - self.body_high
+
     def midpoint(self) -> float:
         """Consequent encroachment when applied to a gap; equilibrium of a range."""
         return (self.high + self.low) / 2.0

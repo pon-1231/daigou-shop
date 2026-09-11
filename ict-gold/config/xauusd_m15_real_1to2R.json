@@ -11,7 +11,9 @@
     "spread": 0.3,
     "slippage_entry": 0.1,
     "slippage_stop": 0.25,
-    "commission_per_lot": 7.0
+    "commission_per_lot": 7.0,
+    "news_spread_mult": 3.0,
+    "rollover_spread_mult": 2.0
   },
   "risk": {
     "starting_equity": 10000.0,
@@ -27,7 +29,7 @@
     "partial_fraction": 0.5,
     "target_max_atr": 12.0,
     "max_hold_bars": 288,
-    "flat_by_ny_hour": 16
+    "flat_by_ny_hour": 17
   },
   "model": {
     "swing_lookback": 2,
@@ -63,7 +65,7 @@
     "Thu",
     "Fri"
   ],
-  "news_blackout_minutes": 0,
+  "news_blackout_minutes": 15,
   "setups": [
     {
       "name": "judas_reversal",
@@ -98,6 +100,9 @@
       "fixed_rr": 2.0,
       "min_rr": 2.0,
       "max_rr": 5.0,
+      "require_confirmation": true,
+      "confirm_max_bars": 4,
+      "confirm_wick_ratio": 0.33,
       "order_valid_bars": 12,
       "min_score": 0.55,
       "weight": 1.0
@@ -136,6 +141,9 @@
       "fixed_rr": 2.0,
       "min_rr": 2.0,
       "max_rr": 5.0,
+      "require_confirmation": true,
+      "confirm_max_bars": 2,
+      "confirm_wick_ratio": 0.28,
       "order_valid_bars": 8,
       "min_score": 0.5,
       "weight": 1.0
@@ -175,6 +183,9 @@
       "fixed_rr": 2.0,
       "min_rr": 2.0,
       "max_rr": 5.0,
+      "require_confirmation": true,
+      "confirm_max_bars": 4,
+      "confirm_wick_ratio": 0.33,
       "order_valid_bars": 16,
       "min_score": 0.6,
       "weight": 1.0

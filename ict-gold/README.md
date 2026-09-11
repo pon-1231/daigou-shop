@@ -21,6 +21,14 @@ XAUUSD 日內進場引擎。
 > [`docs/TRADER_REVIEW.md`](docs/TRADER_REVIEW.md)**：問題不在盈虧比、
 > 也不在一天進場幾筆，而在進場的執行方式——30% 的單在 75 分鐘內死掉，
 > 貢獻 -175R；而不管目標放 1R、1.5R 還是 2R，命中率都差打平門檻約 21pp。
+>
+> 🔧 **照著這份檢討重寫進場執行之後（到價確認、修平倉時間、掛單不佔額度、
+> 新聞黑名單）再測了一次，結果在
+> [`docs/REWRITE_RESULTS.md`](docs/REWRITE_RESULTS.md)**：235 筆、期望值
+> **-0.090R（t=-1.39，回到雜訊範圍，不再是顯著為負）**，賠率從 1.27 升到
+> 1.53，快死單的損失從 -175R 降到 -29R（降了 84%）。**這是進步，不是修好**
+> ——命中率跟打平門檻的缺口幾乎沒有改善，因為那個缺口的成因（bias 判斷、
+> HTF/LTF 巢狀）這次沒有動。
 
 ---
 
@@ -81,7 +89,7 @@ python3 -m unittest discover -s tests
 ## 管線七關
 
 ```
-① TIME      在殺戮時段內嗎？（紐約時間，含日光節約）
+① TIME      在殺戮時段內嗎？（紐約時間，含日光節約；08:30 NY 前後 15 分鐘的新聞黑名單）
 ② BIAS      H4 方向與目標？（M15 對齊則加分，相反則扣分）
 ③ LIQUIDITY 停損池被掃了嗎？（影線穿過 + 收盤回到內側）
 ④ STRUCTURE 然後結構轉變了嗎？（CHoCH／BOS + 位移）
@@ -131,11 +139,12 @@ ictgold/
 docs/
   METHODOLOGY.md            ★ 訓練方法論：怎麼逼出統計優勢、怎麼不騙自己
   TRADER_REVIEW.md          ★ 逐筆翻完 525 筆之後的檢討與漏洞清單
+  REWRITE_RESULTS.md        ★ 照著檢討重寫進場執行之後的前後對比
   BACKTEST_REAL_2012_2022.md  真實資料回測的完整結果與限制
   PLAYBOOK.md               三個劇本的完整規格
   ROADMAP.md                接上 TradingView 的架構與順序
 results/          真實資料回測的原始報告與逐筆交易紀錄
-tests/            30 個測試，鎖住「前視偏差」等致命不變量
+tests/            38 個測試，鎖住「前視偏差」等致命不變量
 config/xauusd.json
 ```
 

@@ -45,6 +45,13 @@ class CostModel:
     slippage_entry: float = 0.10
     slippage_stop: float = 0.25  # stops slip worse than limits, especially on news
     commission_per_lot: float = 7.0  # round turn, USD
+    # A constant spread is optimistic exactly when it matters most: gold's
+    # spread widens sharply during high-impact US data and again at the thin
+    # liquidity around the 17:00 NY rollover. These multipliers apply to any
+    # position management (stop/target fills) that happens to occur in those
+    # windows, whether or not the trade was opened there.
+    news_spread_mult: float = 3.0
+    rollover_spread_mult: float = 2.0
 
 
 @dataclass
@@ -52,6 +59,13 @@ class RiskConfig:
     starting_equity: float = 10_000.0
     risk_per_trade_pct: float = 0.5
     max_trades_per_day: int = 3
+    # NOTE: only unfilled PENDING orders used to count against this too, which
+    # meant a limit order that was never going to fill could block every other
+    # setup from even being evaluated until it expired - an order that carries
+    # no risk was spending the risk budget. Pending orders no longer count;
+    # this now gates concurrent OPEN POSITIONS only (the engine only supports
+    # one at a time regardless, so this is a placeholder for a future
+    # multi-position version, not a live limit today).
     max_concurrent: int = 1
     daily_loss_limit_r: float = 2.0  # stop trading for the day after -2R
     max_stop_atr: float = 3.0  # refuse setups whose stop is absurdly wide
@@ -69,7 +83,14 @@ class RiskConfig:
     # two days away and every trade dies at the session flat.
     target_max_atr: float = 12.0
     max_hold_bars: int = 288  # a day of M5; an intraday model should not linger
-    flat_by_ny_hour: int | None = 16  # square up before the 17:00 NY roll
+    # Square up at the actual gold trading-day rollover (17:00 NY, the same
+    # boundary sessions.trading_day() uses for daily pools). This used to be
+    # 16 - one hour BEFORE the ny_pm (13:30-16:00) and sb_pm (14:00-15:00)
+    # killzones even finish, which meant a position opened at 15:45 got about
+    # 15 minutes of runway before being flattened. That is not "the setup
+    # didn't work", that is a config fighting itself; see the real-data
+    # review's killzone table.
+    flat_by_ny_hour: int | None = 17
 
 
 @dataclass
@@ -106,6 +127,17 @@ class SetupSpec:
     min_rr: float = 2.0
     max_rr: float = 5.0  # a 12R intraday "target" is a data artefact, not a trade
 
+    # A limit order that fills the instant price TOUCHES the PD array is a
+    # blind bet that the array will be respected. It won't always be - price
+    # slices through plenty of them. Confirmation waits for the array to
+    # actually show a reaction (a rejection candle: touches the zone, closes
+    # back out of it, with a wick proving it, not a drift past the line)
+    # before committing. See docs/TRADER_REVIEW.md - this is the fix for the
+    # single biggest leak that review found.
+    require_confirmation: bool = True
+    confirm_max_bars: int = 4  # give up waiting for a reaction after this many bars
+    confirm_wick_ratio: float = 0.33  # rejection wick as a fraction of the bar's range
+
     order_valid_bars: int = 12
     min_score: float = 0.55
     weight: float = 1.0
@@ -124,7 +156,13 @@ class Config:
     htf: str = "H4"  # bias timeframe
 
     trade_days: list[str] = field(default_factory=lambda: ["Mon", "Tue", "Wed", "Thu", "Fri"])
-    news_blackout_minutes: int = 0  # widen when you wire in an economic calendar
+    # Blocks new entries within this many minutes of 08:30 NY, where most
+    # high-impact USD data prints (see sessions.in_news_blackout - it's a
+    # blunt clock-slot proxy, not a real calendar) and widens the spread
+    # assumed for any position management that happens to fall in the same
+    # window. This field existed before but was never read anywhere; it is
+    # wired in now.
+    news_blackout_minutes: int = 15
     setups: list[SetupSpec] = field(default_factory=list)
 
     @staticmethod
@@ -213,6 +251,11 @@ def default_setups() -> list[SetupSpec]:
             target_mode="rr",
             fixed_rr=2.0,
             min_rr=2.0,
+            # The whole window is only 8 bars valid - waiting the full default
+            # 4 bars for a reaction eats half of it. Confirm faster, and
+            # accept a slightly weaker wick, or this setup barely gets to fire.
+            confirm_max_bars=2,
+            confirm_wick_ratio=0.28,
             order_valid_bars=8,
             min_score=0.5,
         ),

@@ -21,7 +21,7 @@ from ictgold.config import Config
 from ictgold.core import UTC, Candle, align_index, resample
 from ictgold.data import load_csv, save_csv, synthetic_m5
 from ictgold.metrics import MIN_N_FOR_T, required_sample, summarize, walk_forward_folds
-from ictgold.sessions import KILLZONES, active_killzones, trading_day
+from ictgold.sessions import KILLZONES, active_killzones, in_news_blackout, trading_day
 from ictgold.state import BEAR, BULL, MarketModel, ModelConfig
 
 
@@ -75,6 +75,14 @@ class TestSessions(unittest.TestCase):
         after = datetime(2024, 6, 3, 22, 0, tzinfo=UTC)   # 18:00 NY
         self.assertEqual(trading_day(before), "2024-06-03")
         self.assertEqual(trading_day(after), "2024-06-04")
+
+    def test_news_blackout_brackets_0830_ny(self):
+        # 08:30 NY in June = 12:30 UTC (EDT).
+        at_release = datetime(2024, 6, 3, 12, 30, tzinfo=UTC)
+        just_outside = datetime(2024, 6, 3, 12, 46, tzinfo=UTC)  # 16 min away
+        self.assertTrue(in_news_blackout(at_release, 15))
+        self.assertFalse(in_news_blackout(just_outside, 15))
+        self.assertFalse(in_news_blackout(at_release, 0), "0 minutes must disable it")
 
 
 class TestMarketModel(unittest.TestCase):
@@ -192,6 +200,85 @@ class TestPipelineAndBacktest(unittest.TestCase):
             self.assertGreater(t.entry_ts, t.signal_ts,
                                "an order filled on the bar that generated it")
 
+    def test_default_setups_require_confirmation_and_fixed_1to2R(self):
+        cfg = self._cfg()
+        for s in cfg.setups:
+            self.assertTrue(s.require_confirmation, s.name)
+            self.assertGreater(s.confirm_max_bars, 0, s.name)
+            self.assertEqual(s.target_mode, "rr", s.name)
+            self.assertAlmostEqual(s.fixed_rr, 2.0, msg=s.name)
+
+    def test_flat_time_matches_the_trading_day_rollover(self):
+        # This used to be 16 while ny_pm/sb_pm killzones ran to 16:00 - a
+        # position opened late in that window got flattened almost on
+        # arrival. It must line up with sessions.trading_day()'s own 17:00
+        # rollover, not sit an hour ahead of it.
+        cfg = self._cfg()
+        self.assertEqual(cfg.risk.flat_by_ny_hour, 17)
+
+    def test_news_blackout_is_wired_on_by_default(self):
+        cfg = self._cfg()
+        self.assertGreater(cfg.news_blackout_minutes, 0)
+
+    def test_confirmation_fills_sometimes_land_off_the_theoretical_entry(self):
+        # A rejection candle's close is rarely exactly on the PD array's
+        # line. If every fill matched the theoretical entry to the cent,
+        # confirmation isn't actually gating anything - it silently fell
+        # back to touch-and-fill.
+        cfg = self._cfg()
+        res = Backtester(cfg).run(synthetic_m5(20000, seed=3))
+        self.assertTrue(res.trades, "no trades on 20000 synthetic bars - widen the smoke test")
+        theoretical = [t.evidence.get("pd_array", {}).get("entry") for t in res.trades]
+        off_by = [abs(t.entry - e) for t, e in zip(res.trades, theoretical) if e is not None]
+        self.assertTrue(off_by, "no trade carried a pd_array entry to compare against")
+        self.assertTrue(any(d > 0.02 for d in off_by),
+                        "every fill matched the theoretical entry - confirmation isn't gating")
+
+    def test_target_reanchors_to_the_confirmed_fill_not_the_theoretical_entry(self):
+        # target_mode="rr" targets are derived (entry + dist*fixed_rr), not a
+        # structural level - if the target stayed at the price computed
+        # against the THEORETICAL entry while confirmation chased the fill
+        # to a different price, the realised reward:risk on every trade
+        # silently stops being the fixed_rr that was promised. Caught by
+        # actually reading real backtest output: target-hit trades were
+        # realising ~0.9R instead of ~1.8R after netting friction.
+        cfg = self._cfg()
+        res = Backtester(cfg).run(synthetic_m5(20000, seed=3))
+        self.assertTrue(res.trades, "no trades on 20000 synthetic bars - widen the smoke test")
+        for t in res.trades:
+            spec = next(s for s in cfg.setups if s.name == t.setup)
+            self.assertEqual(spec.target_mode, "rr")
+            risk = abs(t.entry - t.stop)
+            reward = abs(t.target - t.entry)
+            self.assertAlmostEqual(reward / risk, spec.fixed_rr, places=3,
+                                   msg=f"{t.setup}: target wasn't re-anchored to the realised fill")
+
+    def test_pending_orders_no_longer_gate_concurrency(self):
+        # max_concurrent used to also gate pending (unfilled, no-risk)
+        # orders, so an absurd value like 0 would have silently stopped the
+        # pipe from ever queuing a signal. It must now only matter for
+        # concurrent OPEN positions (which this single-position engine caps
+        # at 1 regardless of this setting).
+        cfg = self._cfg()
+        cfg.risk.max_concurrent = 0
+        res = Backtester(cfg).run(synthetic_m5(20000, seed=6))
+        self.assertTrue(res.trades, "trades stopped firing once max_concurrent was set to 0 - "
+                                    "pending orders are still gating concurrency")
+
+    def test_daily_cap_cancels_orders_queued_before_it_was_hit(self):
+        # A pending order carries no risk, so it no longer blocks new signals
+        # from being queued behind it - but that means an order queued
+        # before the daily cap was reached must not be allowed to fill AFTER
+        # it, or the cap is meaningless once more than one order can be in
+        # flight. This is the failure mode the fix above could reopen.
+        cfg = self._cfg()
+        cfg.risk.max_trades_per_day = 1
+        res = Backtester(cfg).run(synthetic_m5(20000, seed=6))
+        per_day: dict[str, int] = {}
+        for t in res.trades:
+            per_day[t.day] = per_day.get(t.day, 0) + 1
+        self.assertTrue(all(v <= 1 for v in per_day.values()), per_day)
+
     def test_stop_wins_when_a_bar_contains_both_levels(self):
         cfg = self._cfg()
         cfg.costs.spread = 0.0
@@ -259,6 +346,28 @@ class TestPipelineAndBacktest(unittest.TestCase):
         for t in res.trades:
             self.assertGreaterEqual(abs(t.entry - t.stop), floor * 0.95)
 
+    def test_rejection_bar_requires_reach_close_and_wick(self):
+        from ictgold.backtest import _is_rejection_bar
+        zone_top, zone_bottom = 100.0, 98.0
+        # Strong bullish rejection: dips into the zone, closes well above it,
+        # long lower wick.
+        strong = c(0, 100.2, 100.5, 97.5, 100.3)
+        self.assertTrue(_is_rejection_bar(strong, BULL, zone_top, zone_bottom, 0.33))
+        # Never reached the zone at all.
+        no_touch = c(0, 101.0, 101.5, 100.5, 101.2)
+        self.assertFalse(_is_rejection_bar(no_touch, BULL, zone_top, zone_bottom, 0.33))
+        # Reached it but closed back inside/below - no rejection, price
+        # accepted the level rather than defending it.
+        accepted = c(0, 99.5, 99.6, 97.0, 98.5)
+        self.assertFalse(_is_rejection_bar(accepted, BULL, zone_top, zone_bottom, 0.33))
+        # Reached and closed above, but the wick is too small relative to
+        # the bar's range - a drift past the line, not a rejection.
+        weak_wick = c(0, 99.9, 100.6, 99.8, 100.5)
+        self.assertFalse(_is_rejection_bar(weak_wick, BULL, zone_top, zone_bottom, 0.33))
+        # Mirror case for BEAR.
+        strong_bear = c(0, 97.8, 100.5, 97.5, 97.7)
+        self.assertTrue(_is_rejection_bar(strong_bear, BEAR, zone_top, zone_bottom, 0.33))
+
     def test_disabled_setup_produces_nothing(self):
         cfg = self._cfg()
         for s in cfg.setups:
@@ -266,16 +375,6 @@ class TestPipelineAndBacktest(unittest.TestCase):
         res = Backtester(cfg).run(synthetic_m5(3000, seed=2))
         self.assertEqual(res.trades, [])
         self.assertEqual(res.signals_generated, 0)
-
-    def test_daily_trade_cap_is_enforced(self):
-        cfg = self._cfg()
-        cfg.risk.max_trades_per_day = 1
-        res = Backtester(cfg).run(synthetic_m5(20000, seed=6))
-        per_day: dict[str, int] = {}
-        for t in res.trades:
-            per_day[t.day] = per_day.get(t.day, 0) + 1
-        self.assertTrue(all(v <= 1 for v in per_day.values()), per_day)
-
 
 class TestMetrics(unittest.TestCase):
     def _trades(self, rs: list[float]):

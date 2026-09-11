@@ -25,7 +25,7 @@ from datetime import datetime
 from typing import Callable
 
 from .config import Config, SetupSpec
-from .sessions import KILLZONES, day_of_week, in_macro
+from .sessions import KILLZONES, day_of_week, in_macro, in_news_blackout
 from .state import BEAR, BULL, MarketModel, Sweep
 
 
@@ -204,6 +204,8 @@ def stage_time(ctx: PipelineContext) -> StageOutcome:
     dow = day_of_week(ctx.ts)
     if dow not in ctx.cfg.trade_days:
         return StageOutcome("time", False, f"day {dow} not traded")
+    if in_news_blackout(ctx.ts, ctx.cfg.news_blackout_minutes):
+        return StageOutcome("time", False, "inside news blackout (08:30 NY data slot)")
     active = [k for k in s.killzones if k in KILLZONES and KILLZONES[k].contains(ctx.ts)]
     if not active:
         return StageOutcome("time", False, f"outside killzones {s.killzones}")
