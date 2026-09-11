@@ -1342,25 +1342,42 @@
     var opts2Order = [], opts2Seen = {};
     var spec1NameVal = '', spec2NameVal = '';
 
+    /* 有些舊資料是「一整筆存了逗號分隔的多個值」(例如舊版可選尺寸欄位)，不是每個值各自一筆。
+       這裡要先用 parseOptions 拆開，拆出來的每個值才是畫面上真正的一個規格選項，
+       不然重新展開組合時 key 對不起來，這筆舊資料會變成存檔時對不到、變成孤兒沒被更新到。 */
     group.forEach(function (x, i) {
       var vA = rowsA[i], vB = rowsB[i];
-      var key;
       if (mode === 2) {
-        key = vA + '|||' + vB;
-        if (vA && !opts1Seen[vA]) { opts1Seen[vA] = true; opts1Order.push(vA); }
-        if (vB && !opts2Seen[vB]) { opts2Seen[vB] = true; opts2Order.push(vB); }
+        var piecesA = parseOptions(vA); if (piecesA.length === 0) piecesA = [''];
+        var piecesB = parseOptions(vB); if (piecesB.length === 0) piecesB = [''];
+        var dbIdUsedA = false;
+        piecesA.forEach(function (pa) {
+          piecesB.forEach(function (pb) {
+            if (pa && !opts1Seen[pa]) { opts1Seen[pa] = true; opts1Order.push(pa); }
+            if (pb && !opts2Seen[pb]) { opts2Seen[pb] = true; opts2Order.push(pb); }
+            var key = pa + '|||' + pb;
+            if (!comboOverrides[key]) {
+              comboOverrides[key] = { dbId: dbIdUsedA ? null : x.id, cost: Number(x.actual_cost) || 0, price: Number(x.final_price) || 0, excluded: false };
+              dbIdUsedA = true;
+            }
+          });
+        });
         if (x.spec1_name) spec1NameVal = x.spec1_name; else if (x.color && !spec1NameVal) spec1NameVal = '顏色';
         if (x.spec2_name) spec2NameVal = x.spec2_name; else if (x.sizes && !spec2NameVal) spec2NameVal = '尺寸';
       } else if (mode === 1) {
-        var v = useAxis === 'A' ? vA : vB;
-        key = v;
-        if (v && !opts1Seen[v]) { opts1Seen[v] = true; opts1Order.push(v); }
+        var raw = useAxis === 'A' ? vA : vB;
+        var pieces = parseOptions(raw); if (pieces.length === 0) pieces = [''];
+        pieces.forEach(function (p, idx) {
+          if (p && !opts1Seen[p]) { opts1Seen[p] = true; opts1Order.push(p); }
+          if (!comboOverrides[p]) {
+            comboOverrides[p] = { dbId: idx === 0 ? x.id : null, cost: Number(x.actual_cost) || 0, price: Number(x.final_price) || 0, excluded: false };
+          }
+        });
         if (useAxis === 'A') { if (x.spec1_name) spec1NameVal = x.spec1_name; else if (x.color && !spec1NameVal) spec1NameVal = '顏色'; }
         else { if (x.spec2_name) spec1NameVal = x.spec2_name; else if (x.sizes && !spec1NameVal) spec1NameVal = '尺寸'; }
       } else {
-        key = '';
+        comboOverrides[''] = { dbId: x.id, cost: Number(x.actual_cost) || 0, price: Number(x.final_price) || 0, excluded: false };
       }
-      comboOverrides[key] = { dbId: x.id, cost: Number(x.actual_cost) || 0, price: Number(x.final_price) || 0, excluded: false };
     });
 
     $('spec1Name').value = spec1NameVal;
