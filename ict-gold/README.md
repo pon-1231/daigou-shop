@@ -16,6 +16,11 @@ XAUUSD 日內進場引擎。
 > 原因、bug、完整結果全部寫在
 > [`docs/BACKTEST_REAL_2012_2022.md`](docs/BACKTEST_REAL_2012_2022.md)，
 > 請務必先讀這份文件再看任何數字。
+>
+> 🔍 **逐筆翻完那 525 筆之後的檢討在
+> [`docs/TRADER_REVIEW.md`](docs/TRADER_REVIEW.md)**：問題不在盈虧比、
+> 也不在一天進場幾筆，而在進場的執行方式——30% 的單在 75 分鐘內死掉，
+> 貢獻 -175R；而不管目標放 1R、1.5R 還是 2R，命中率都差打平門檻約 21pp。
 
 ---
 
@@ -124,10 +129,13 @@ ictgold/
   data.py       CSV 載入（含 broker 時區）、合成資料產生器
   cli.py        指令列介面
 docs/
-  METHODOLOGY.md  ★ 訓練方法論：怎麼逼出統計優勢、怎麼不騙自己
-  PLAYBOOK.md     三個劇本的完整規格
-  ROADMAP.md      接上 TradingView 的架構與順序
-tests/            28 個測試，鎖住「前視偏差」等致命不變量
+  METHODOLOGY.md            ★ 訓練方法論：怎麼逼出統計優勢、怎麼不騙自己
+  TRADER_REVIEW.md          ★ 逐筆翻完 525 筆之後的檢討與漏洞清單
+  BACKTEST_REAL_2012_2022.md  真實資料回測的完整結果與限制
+  PLAYBOOK.md               三個劇本的完整規格
+  ROADMAP.md                接上 TradingView 的架構與順序
+results/          真實資料回測的原始報告與逐筆交易紀錄
+tests/            30 個測試，鎖住「前視偏差」等致命不變量
 config/xauusd.json
 ```
 
