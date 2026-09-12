@@ -15,9 +15,15 @@
 ```bash
 python3 -m ictgold backtest --csv xauusd_m5.csv --tz <broker_tz>
 python3 -m ictgold walkforward --csv xauusd_m5.csv --tz <broker_tz>
+python3 -m ictgold chart --csv xauusd_m5.csv --tz <broker_tz> \
+    --trades journal.json --out chart.html   # 進出場畫成 K 線圖，本機開瀏覽器看
 ```
 **通過條件**：樣本外期望值為正、t 值 > 2、樣本數 > 200。
 沒過就不要往下走，往下走只是把問題搬到更貴的地方。
+
+`chart` 是本機、事後產生的靜態 HTML——你跑完回測，開檔案，看每一筆
+進出場長什麼樣子。這**不是**下面階段 2 的即時儀表板，兩者是不同的東西：
+這個看的是「歷史上發生過什麼」，階段 2 看的是「現在符不符合條件」。
 
 ### 階段 2 — 唯讀儀表板（沒有下單）
 一個小服務，定時抓 M5 資料 → 跑 `scan` → 把七關的通過／否決狀態畫成介面。

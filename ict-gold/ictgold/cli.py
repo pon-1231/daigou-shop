@@ -6,6 +6,7 @@
     scan        evaluate the most recent bar and emit a signal as JSON
     explain     dump the full stage-by-stage trace around a timestamp
     init-config write a default config file you can edit
+    chart       render a trade journal (backtest --trades) as candlestick charts
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .backtest import Backtester
+from .chart import render_html
 from .config import Config
 from .core import resample, tf_minutes
 from .data import load_csv, synthetic_m5
@@ -179,6 +181,22 @@ def cmd_explain(args) -> int:
     return 0
 
 
+def cmd_chart(args) -> int:
+    candles = load_csv(args.csv, source_tz=args.tz) if args.csv else synthetic_m5(bars=args.bars, seed=args.seed)
+    if not candles:
+        print(f"no candles parsed from {args.csv}", file=sys.stderr)
+        return 2
+    trades = json.loads(Path(args.trades).read_text(encoding="utf-8"))
+    n = render_html(candles, trades, args.out, lookback=args.lookback, lookahead=args.lookahead,
+                    limit=args.limit, setup=args.setup, outcome=args.outcome)
+    if n == 0:
+        print("no trades matched / rendered - check --setup, --outcome, and that --csv covers "
+              "the same period as --trades", file=sys.stderr)
+        return 2
+    print(f"wrote {n} trade card(s) -> {args.out}", file=sys.stderr)
+    return 0
+
+
 def cmd_init_config(args) -> int:
     Config.default().to_json(args.path)
     print(f"wrote {args.path}")
@@ -226,6 +244,20 @@ def build_parser() -> argparse.ArgumentParser:
     i = sub.add_parser("init-config", help="write a default config json")
     i.add_argument("path", nargs="?", default="config/xauusd.json")
     i.set_defaults(func=cmd_init_config)
+
+    ch = sub.add_parser("chart", help="render a trade journal as candlestick charts (html)")
+    ch.add_argument("--csv", help="the SAME csv used to produce --trades")
+    ch.add_argument("--tz", default="UTC", help="timezone of the csv timestamps (broker time!)")
+    ch.add_argument("--bars", type=int, default=20_000, help="synthetic bars when no --csv")
+    ch.add_argument("--seed", type=int, default=7)
+    ch.add_argument("--trades", required=True, help="trade journal json from `backtest --trades`")
+    ch.add_argument("--out", default="chart.html")
+    ch.add_argument("--lookback", type=int, default=15, help="bars shown before entry")
+    ch.add_argument("--lookahead", type=int, default=8, help="bars shown after exit")
+    ch.add_argument("--limit", type=int, help="only render the most recent N (matching) trades")
+    ch.add_argument("--setup", help="only this setup, e.g. judas_reversal")
+    ch.add_argument("--outcome", choices=["win", "loss", "flat"], help="only this outcome bucket")
+    ch.set_defaults(func=cmd_chart)
     return p
 
 

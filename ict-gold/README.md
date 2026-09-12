@@ -74,9 +74,31 @@ python3 -m ictgold scan --csv xauusd_m5.csv --tz Europe/Athens
 python3 -m ictgold explain --csv xauusd_m5.csv --tz Europe/Athens \
     --at 2024-06-03T13:35:00+00:00
 
+# 6. 把回測的進出場畫成 K 線圖（HTML，開瀏覽器看）
+python3 -m ictgold chart --csv xauusd_m5.csv --tz Europe/Athens \
+    --trades journal.json --out chart.html
+
 # 測試
 python3 -m unittest discover -s tests
 ```
+
+### 這條 pipe 會不會自己告訴你何時進出場、畫出來？
+
+**`backtest` 會**：`--trades journal.json` 產出的每一筆都有進場／出場的
+時間與價格，那是真實發生過的事，不是預測。**`chart` 會把它畫出來**——
+K 線圖上標進場、停損、停利、出場點，用瀏覽器打開 `chart.html` 就能看，
+可以照劇本／輸贏篩選（`--setup`、`--outcome`、`--limit`）。
+
+**`scan` 會告訴你「現在」符不符合條件**：餵最新的 K 棒進去，
+它會回報現在這一刻算不算一個訊號、entry/stop/target 是多少、
+七關各自的通過或否決理由——但那是**你手動執行一次**才會得到的答案，
+不是它在背景盯著盤幫你盯。
+
+**這條 pipe 不會**：自動盯盤、自動下單、或是即時跳出提醒。
+它是一個你餵資料進去、它吐報告出來的命令列工具，不是一個持續運行的
+服務。要做到「即時通知」或「畫在 TradingView 上」，是
+[`docs/ROADMAP.md`](docs/ROADMAP.md) 裡規劃、但故意排在後面的階段——
+先把管線本身在歷史資料上證明可信，再談即時。
 
 ### ⚠️ `--tz` 是最容易出錯的參數
 

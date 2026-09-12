@@ -17,6 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ictgold.backtest import Backtester
+from ictgold.chart import ChartTrade, _find_index, render_html, svg_for_trade
 from ictgold.config import Config
 from ictgold.core import UTC, Candle, align_index, resample
 from ictgold.data import load_csv, save_csv, synthetic_m5
@@ -424,6 +425,73 @@ class TestMetrics(unittest.TestCase):
             self.assertEqual(f.oos_start, f.is_end)
         for a, b in zip(folds, folds[1:]):
             self.assertLessEqual(a.oos_end, b.oos_start)
+
+
+class TestChart(unittest.TestCase):
+    def _candles(self, n=60, seed=2):
+        return synthetic_m5(n, seed=seed, start=datetime(2024, 6, 3, 12, 0, tzinfo=UTC))
+
+    def test_find_index_matches_exact_and_before(self):
+        candles = self._candles()
+        exact = _find_index(candles, candles[10].ts)
+        self.assertEqual(exact, 10)
+        between = _find_index(candles, candles[10].ts + timedelta(minutes=2))
+        self.assertEqual(between, 10)
+        before_start = _find_index(candles, candles[0].ts - timedelta(minutes=5))
+        self.assertIsNone(before_start)
+
+    def test_svg_for_trade_embeds_price_lines_and_is_well_formed(self):
+        candles = self._candles()
+        trade = ChartTrade(
+            setup="judas_reversal", side="LONG", entry_ts=candles[20].ts,
+            exit_ts=candles[25].ts, entry=candles[20].close,
+            stop=candles[20].close - 5, target=candles[20].close + 10,
+            exit_price=candles[25].close, r=1.5, exit_reason="target",
+            score=0.6, killzone="ny_am",
+        )
+        svg = svg_for_trade(candles, trade)
+        self.assertIsNotNone(svg)
+        self.assertTrue(svg.startswith("<svg"))
+        self.assertTrue(svg.endswith("</svg>"))
+        for label in ("entry", "stop", "target"):
+            self.assertIn(label, svg)
+
+    def test_svg_for_trade_returns_none_when_entry_predates_all_candles(self):
+        candles = self._candles()
+        trade = ChartTrade(
+            setup="x", side="LONG", entry_ts=candles[0].ts - timedelta(hours=1),
+            exit_ts=candles[5].ts, entry=1.0, stop=0.9, target=1.2,
+            exit_price=1.1, r=1.0, exit_reason="target", score=0.6, killzone="ny_am",
+        )
+        self.assertIsNone(svg_for_trade(candles, trade))
+
+    def test_render_html_filters_by_setup_and_outcome_before_limit(self):
+        candles = self._candles()
+
+        def rec(i, setup, r, reason):
+            return {"setup": setup, "side": "LONG",
+                    "entry_ts": candles[i].ts.isoformat(),
+                    "exit_ts": candles[i + 3].ts.isoformat(),
+                    "entry": candles[i].close, "stop": candles[i].close - 1,
+                    "target": candles[i].close + 2, "exit": candles[i + 3].close,
+                    "r": r, "exit_reason": reason, "score": 0.6, "killzone": "ny_am"}
+
+        trades = [rec(10, "a", 1.5, "target"), rec(20, "b", -1.0, "stop"),
+                  rec(30, "a", -1.0, "stop"), rec(40, "a", 0.8, "target")]
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            out = f"{d}/c.html"
+            n = render_html(candles, trades, out, setup="a", outcome="win")
+            self.assertEqual(n, 2)  # the two "a" wins, "b" and the "a" loss excluded
+            n2 = render_html(candles, trades, out, setup="a", outcome="win", limit=1)
+            self.assertEqual(n2, 1)
+
+    def test_render_html_reports_zero_when_nothing_matches(self):
+        import tempfile
+        candles = self._candles()
+        with tempfile.TemporaryDirectory() as d:
+            n = render_html(candles, [], f"{d}/c.html")
+        self.assertEqual(n, 0)
 
 
 class TestDataIO(unittest.TestCase):
