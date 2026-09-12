@@ -1,0 +1,76 @@
+========================================================================
+ICT GOLD PIPELINE - BACKTEST REPORT
+========================================================================
+bars processed      : 230400
+signals generated   : 1068
+trades filled       : 525
+win rate            : 35.8%  (188W / 334L / 3BE)
+expectancy          : -0.160 R per trade
+total               : -84.2 R   net $-3,489  (-34.9%)
+avg win / avg loss  : +1.13R / -0.89R  (payoff 1.27)
+profit factor       : 0.69
+max drawdown        : 103.9 R  (40.9% of equity)
+max consec losses   : 14
+avg MAE / MFE       : 0.94R / 1.05R
+t-stat of expectancy: -3.32  (>2.0 before you believe it)
+sample needed       : n/a (no positive edge)  (have 525)
+
+BY SETUP
+group                      n     win%   exp(R)     totR      PF  maxDD_R
+------------------------------------------------------------------------
+judas_reversal            77    44.2%    0.053      4.1    1.01     12.8
+ote_continuation         390    34.9%   -0.198    -77.4    0.64     90.9
+silver_bullet             58    31.0%   -0.188    -10.9    0.68     20.2
+
+BY KILLZONE
+group                      n     win%   exp(R)     totR      PF  maxDD_R
+------------------------------------------------------------------------
+london                   138    29.0%   -0.227    -31.4    0.65     39.1
+ny_am                    306    39.9%   -0.117    -35.8    0.74     48.4
+ny_pm                     23    34.8%   -0.263     -6.1    0.21      6.7
+sb_am                     20    35.0%   -0.291     -5.8    0.47      6.5
+sb_london                 28    28.6%   -0.137     -3.8    0.85     13.7
+sb_pm                     10    30.0%   -0.127     -1.3    0.33      1.8
+
+BY DAY
+group                      n     win%   exp(R)     totR      PF  maxDD_R
+------------------------------------------------------------------------
+Fri                       97    42.3%   -0.015     -1.5    0.94      8.5
+Mon                      100    37.0%   -0.091     -9.1    0.79     18.0
+Thu                      115    38.3%   -0.165    -19.0    0.67     24.8
+Tue                      100    35.0%   -0.184    -18.4    0.67     24.4
+Wed                      113    27.4%   -0.320    -36.2    0.48     41.4
+
+BY EXIT
+group                      n     win%   exp(R)     totR      PF  maxDD_R
+------------------------------------------------------------------------
+breakeven                 30     0.0%   -0.114     -3.4    0.00      3.4
+session_flat             156    59.0%    0.160     25.0    2.23      2.2
+stop                     243     0.0%   -1.132   -275.0    0.00    275.0
+target                    96   100.0%    1.763    169.3     inf      0.0
+
+BY SCORE
+group                      n     win%   exp(R)     totR      PF  maxDD_R
+------------------------------------------------------------------------
+0.50-0.60                 11    54.5%    0.241      2.7    1.90      3.9
+0.60-0.70                409    34.7%   -0.194    -79.4    0.64     94.5
+0.70-0.80                 66    36.4%   -0.082     -5.4    0.79     13.7
+>=0.80                    39    41.0%   -0.053     -2.1    0.87      8.2
+
+MONTE CARLO (trade order reshuffled)
+------------------------------------------------------------------------
+median drawdown   : 89.5 R
+95th pct drawdown : 99.5 R   <- size your risk against THIS
+worst drawdown    : 117.1 R
+P(total < 0)      : 100.0%
+P(dd >= 20R)      : 100.0%
+
+PIPELINE VETOES (where setups died)
+------------------------------------------------------------------------
+time                      494958    77.0%
+structure                  74157    11.5%
+liquidity                  31606     4.9%
+risk                       16413     2.6%
+score                      16363     2.5%
+pd_array                    8757     1.4%
+bias                         160     0.0%

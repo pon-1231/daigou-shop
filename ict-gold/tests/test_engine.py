@@ -1,0 +1,522 @@
+"""Tests for the invariants that, if broken, silently fake a profitable strategy.
+
+The three that matter most:
+  * swings are published only after their confirmation bar (no lookahead),
+  * higher timeframes are fed only closed bars,
+  * an order never fills on the bar that produced its signal.
+Everything else is arithmetic.
+"""
+
+from __future__ import annotations
+
+import sys
+import unittest
+from datetime import datetime, timedelta
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from ictgold.backtest import Backtester
+from ictgold.chart import ChartTrade, _find_index, render_html, svg_for_trade
+from ictgold.config import Config
+from ictgold.core import UTC, Candle, align_index, resample
+from ictgold.data import load_csv, save_csv, synthetic_m5
+from ictgold.metrics import MIN_N_FOR_T, required_sample, summarize, walk_forward_folds
+from ictgold.sessions import KILLZONES, active_killzones, in_news_blackout, trading_day
+from ictgold.state import BEAR, BULL, MarketModel, ModelConfig
+
+
+def c(minute: int, o: float, h: float, l: float, cl: float) -> Candle:
+    return Candle(datetime(2024, 6, 3, 12, 0, tzinfo=UTC) + timedelta(minutes=minute), o, h, l, cl)
+
+
+class TestCore(unittest.TestCase):
+    def test_resample_aggregates_ohlc(self):
+        bars = [c(i * 5, 10 + i, 12 + i, 8 + i, 11 + i) for i in range(6)]
+        m15 = resample(bars, "M15")
+        self.assertEqual(len(m15), 2)
+        self.assertEqual(m15[0].open, bars[0].open)
+        self.assertEqual(m15[0].close, bars[2].close)
+        self.assertEqual(m15[0].high, max(b.high for b in bars[:3]))
+        self.assertEqual(m15[0].low, min(b.low for b in bars[:3]))
+
+    def test_resample_buckets_are_aligned_not_sequential(self):
+        # Starting mid-bucket must not create a bucket straddling the boundary.
+        start = datetime(2024, 6, 3, 12, 10, tzinfo=UTC)
+        bars = [Candle(start + timedelta(minutes=5 * i), 1, 2, 0.5, 1.5) for i in range(4)]
+        m15 = resample(bars, "M15")
+        self.assertEqual(m15[0].ts, datetime(2024, 6, 3, 12, 0, tzinfo=UTC))
+        self.assertEqual(m15[1].ts, datetime(2024, 6, 3, 12, 15, tzinfo=UTC))
+
+    def test_align_index_excludes_unclosed_bar(self):
+        bars = [Candle(datetime(2024, 6, 3, h, tzinfo=UTC), 1, 2, 0, 1) for h in range(5)]
+        self.assertEqual(align_index(bars, datetime(2024, 6, 3, 2, 30, tzinfo=UTC)), 2)
+        self.assertEqual(align_index(bars, datetime(2024, 6, 3, 0, 0, tzinfo=UTC)), -1)
+
+    def test_candle_rejects_naive_timestamp(self):
+        with self.assertRaises(ValueError):
+            Candle(datetime(2024, 6, 3, 12, 0), 1, 2, 0, 1)
+
+
+class TestSessions(unittest.TestCase):
+    def test_killzones_follow_dst(self):
+        # 14:05 UTC is 10:05 NY in July (EDT) but 09:05 NY in January (EST).
+        summer = datetime(2024, 7, 10, 14, 5, tzinfo=UTC)
+        winter = datetime(2024, 1, 10, 14, 5, tzinfo=UTC)
+        self.assertIn("sb_am", active_killzones(summer))
+        self.assertNotIn("sb_am", active_killzones(winter))
+
+    def test_asia_window_wraps_midnight(self):
+        self.assertTrue(KILLZONES["asia"].wraps_midnight)
+        # 02:00 UTC in January = 21:00 NY the previous day.
+        self.assertIn("asia", active_killzones(datetime(2024, 1, 11, 2, 0, tzinfo=UTC)))
+
+    def test_trading_day_rolls_at_17_ny(self):
+        before = datetime(2024, 6, 3, 20, 0, tzinfo=UTC)  # 16:00 NY
+        after = datetime(2024, 6, 3, 22, 0, tzinfo=UTC)   # 18:00 NY
+        self.assertEqual(trading_day(before), "2024-06-03")
+        self.assertEqual(trading_day(after), "2024-06-04")
+
+    def test_news_blackout_brackets_0830_ny(self):
+        # 08:30 NY in June = 12:30 UTC (EDT).
+        at_release = datetime(2024, 6, 3, 12, 30, tzinfo=UTC)
+        just_outside = datetime(2024, 6, 3, 12, 46, tzinfo=UTC)  # 16 min away
+        self.assertTrue(in_news_blackout(at_release, 15))
+        self.assertFalse(in_news_blackout(just_outside, 15))
+        self.assertFalse(in_news_blackout(at_release, 0), "0 minutes must disable it")
+
+
+class TestMarketModel(unittest.TestCase):
+    def test_swing_is_published_only_after_confirmation(self):
+        m = MarketModel(ModelConfig(swing_lookback=2))
+        seq = [(1, 2, 0, 1.5), (2, 3, 1, 2.5), (3, 9, 2, 8),  # index 2 = the peak
+               (4, 5, 3, 4), (3, 4, 2, 3), (2, 3, 1, 2)]
+        for i, (o, h, l, cl) in enumerate(seq):
+            m.update(c(i * 5, o, h, l, cl))
+            if i < 4:
+                self.assertEqual([s.idx for s in m.swing_highs], [],
+                                 f"swing leaked at bar {i}, before its confirmation bar")
+        self.assertIn(2, [s.idx for s in m.swing_highs])
+        self.assertEqual(m.swing_highs[0].confirmed_idx, 4)
+
+    def test_bullish_fvg_detected_and_filled(self):
+        m = MarketModel(ModelConfig(atr_period=2, fvg_min_atr=0.0))
+        m.update(c(0, 100, 101, 99, 100))     # bar 0: high 101
+        m.update(c(5, 100, 105, 100, 104))
+        m.update(c(10, 104, 108, 103, 107))   # low 103 > 101 -> gap 101..103
+        gaps = m.live_fvgs(BULL)
+        self.assertEqual(len(gaps), 1)
+        self.assertAlmostEqual(gaps[0].bottom, 101)
+        self.assertAlmostEqual(gaps[0].top, 103)
+        self.assertAlmostEqual(gaps[0].ce, 102)
+        m.update(c(15, 107, 107, 100, 100.5))  # trades all the way through
+        self.assertEqual(m.live_fvgs(BULL), [])
+
+    def test_bearish_fvg_detected(self):
+        m = MarketModel(ModelConfig(atr_period=2, fvg_min_atr=0.0))
+        m.update(c(0, 100, 101, 99, 99.5))
+        m.update(c(5, 99, 99, 94, 95))
+        m.update(c(10, 95, 97, 93, 94))       # high 97 < low 99 -> gap 97..99
+        gaps = m.live_fvgs(BEAR)
+        self.assertEqual(len(gaps), 1)
+        self.assertAlmostEqual(gaps[0].bottom, 97)
+        self.assertAlmostEqual(gaps[0].top, 99)
+
+    def test_sweep_needs_close_back_inside(self):
+        m = MarketModel(ModelConfig(swing_lookback=1, atr_period=2))
+        # Build and confirm a swing high at 110.
+        for i, (o, h, l, cl) in enumerate([(100, 102, 99, 101), (101, 110, 100, 109),
+                                           (109, 109, 104, 105), (105, 106, 103, 104)]):
+            m.update(c(i * 5, o, h, l, cl))
+        self.assertTrue(any(abs(p.price - 110) < 1e-9 for p in m.live_pools("BSL")))
+        # Wick above 110 but close below = liquidity taken and rejected.
+        m.update(c(20, 106, 112, 105, 107))
+        self.assertEqual(len(m.sweeps), 1)
+        self.assertEqual(m.sweeps[0].direction, BEAR)
+
+    def test_close_through_level_consumes_rather_than_sweeps(self):
+        m = MarketModel(ModelConfig(swing_lookback=1, atr_period=2))
+        for i, (o, h, l, cl) in enumerate([(100, 102, 99, 101), (101, 110, 100, 109),
+                                           (109, 109, 104, 105), (105, 106, 103, 104)]):
+            m.update(c(i * 5, o, h, l, cl))
+        m.update(c(20, 106, 115, 105, 114))  # closes above: a run, not a sweep
+        self.assertEqual(m.sweeps, [])
+        pool = next(p for p in m.pools if abs(p.price - 110) < 1e-9)
+        self.assertIsNotNone(pool.consumed_idx)
+
+    def test_premium_discount_split_at_equilibrium(self):
+        m = MarketModel(ModelConfig(swing_lookback=1, atr_period=2))
+        seq = [(100, 101, 99, 100), (100, 100, 90, 91), (91, 95, 90, 94),
+               (94, 110, 93, 109), (109, 110, 104, 105), (105, 107, 103, 104)]
+        for i, row in enumerate(seq):
+            m.update(c(i * 5, *row))
+        dr = m.dealing_range()
+        self.assertIsNotNone(dr)
+        self.assertEqual(dr.zone(dr.low + dr.size * 0.25), "discount")
+        self.assertEqual(dr.zone(dr.low + dr.size * 0.75), "premium")
+        self.assertAlmostEqual(dr.retracement(dr.equilibrium), 0.5)
+
+    def test_structure_labels_choch_when_direction_flips(self):
+        m = MarketModel(ModelConfig(swing_lookback=1, atr_period=3, fvg_min_atr=0.0))
+        candles = synthetic_m5(400, seed=3)
+        for k in candles:
+            m.update(k)
+        kinds = {e.kind for e in m.events}
+        self.assertTrue(kinds.issubset({"BOS", "CHOCH"}))
+        self.assertTrue(m.events, "no structure events on 400 bars of data")
+        for a, b in zip(m.events, m.events[1:]):
+            if a.direction != b.direction:
+                self.assertEqual(b.kind, "CHOCH",
+                                 "a break against the prevailing trend must be a CHOCH")
+
+
+class TestPipelineAndBacktest(unittest.TestCase):
+    def _cfg(self) -> Config:
+        cfg = Config.default()
+        cfg.risk.starting_equity = 10_000.0
+        return cfg
+
+    def test_no_signal_outside_killzone(self):
+        from ictgold.pipeline import EntryPipeline
+        cfg = self._cfg()
+        # 23:00 UTC = 19:00 NY: no configured killzone is open.
+        candles = synthetic_m5(600, seed=5, start=datetime(2024, 3, 4, 23, 0, tzinfo=UTC))
+        ltf, htf = MarketModel(cfg.model), MarketModel(cfg.htf_model)
+        for k in candles[:200]:
+            ltf.update(k)
+        for k in resample(candles[:200], cfg.htf):
+            htf.update(k)
+        quiet = [k for k in candles[:200] if not active_killzones(k.ts)]
+        self.assertTrue(quiet)
+        results = EntryPipeline(cfg).run(ltf, htf, 10_000.0)
+        # The final bar drives the evaluation; assert the stage that vetoes.
+        if not active_killzones(ltf.bars[-1].ts, ["london", "ny_am", "ny_pm",
+                                                  "sb_am", "sb_pm", "sb_london"]):
+            self.assertTrue(all(r.veto_stage == "time" for r in results))
+
+    def test_order_never_fills_on_its_signal_bar(self):
+        cfg = self._cfg()
+        res = Backtester(cfg).run(synthetic_m5(8000, seed=9))
+        for t in res.trades:
+            self.assertGreater(t.entry_ts, t.signal_ts,
+                               "an order filled on the bar that generated it")
+
+    def test_default_setups_require_confirmation_and_fixed_1to2R(self):
+        cfg = self._cfg()
+        for s in cfg.setups:
+            self.assertTrue(s.require_confirmation, s.name)
+            self.assertGreater(s.confirm_max_bars, 0, s.name)
+            self.assertEqual(s.target_mode, "rr", s.name)
+            self.assertAlmostEqual(s.fixed_rr, 2.0, msg=s.name)
+
+    def test_flat_time_matches_the_trading_day_rollover(self):
+        # This used to be 16 while ny_pm/sb_pm killzones ran to 16:00 - a
+        # position opened late in that window got flattened almost on
+        # arrival. It must line up with sessions.trading_day()'s own 17:00
+        # rollover, not sit an hour ahead of it.
+        cfg = self._cfg()
+        self.assertEqual(cfg.risk.flat_by_ny_hour, 17)
+
+    def test_news_blackout_is_wired_on_by_default(self):
+        cfg = self._cfg()
+        self.assertGreater(cfg.news_blackout_minutes, 0)
+
+    def test_confirmation_fills_sometimes_land_off_the_theoretical_entry(self):
+        # A rejection candle's close is rarely exactly on the PD array's
+        # line. If every fill matched the theoretical entry to the cent,
+        # confirmation isn't actually gating anything - it silently fell
+        # back to touch-and-fill.
+        cfg = self._cfg()
+        res = Backtester(cfg).run(synthetic_m5(20000, seed=3))
+        self.assertTrue(res.trades, "no trades on 20000 synthetic bars - widen the smoke test")
+        theoretical = [t.evidence.get("pd_array", {}).get("entry") for t in res.trades]
+        off_by = [abs(t.entry - e) for t, e in zip(res.trades, theoretical) if e is not None]
+        self.assertTrue(off_by, "no trade carried a pd_array entry to compare against")
+        self.assertTrue(any(d > 0.02 for d in off_by),
+                        "every fill matched the theoretical entry - confirmation isn't gating")
+
+    def test_target_reanchors_to_the_confirmed_fill_not_the_theoretical_entry(self):
+        # target_mode="rr" targets are derived (entry + dist*fixed_rr), not a
+        # structural level - if the target stayed at the price computed
+        # against the THEORETICAL entry while confirmation chased the fill
+        # to a different price, the realised reward:risk on every trade
+        # silently stops being the fixed_rr that was promised. Caught by
+        # actually reading real backtest output: target-hit trades were
+        # realising ~0.9R instead of ~1.8R after netting friction.
+        cfg = self._cfg()
+        res = Backtester(cfg).run(synthetic_m5(20000, seed=3))
+        self.assertTrue(res.trades, "no trades on 20000 synthetic bars - widen the smoke test")
+        for t in res.trades:
+            spec = next(s for s in cfg.setups if s.name == t.setup)
+            self.assertEqual(spec.target_mode, "rr")
+            risk = abs(t.entry - t.stop)
+            reward = abs(t.target - t.entry)
+            self.assertAlmostEqual(reward / risk, spec.fixed_rr, places=3,
+                                   msg=f"{t.setup}: target wasn't re-anchored to the realised fill")
+
+    def test_pending_orders_no_longer_gate_concurrency(self):
+        # max_concurrent used to also gate pending (unfilled, no-risk)
+        # orders, so an absurd value like 0 would have silently stopped the
+        # pipe from ever queuing a signal. It must now only matter for
+        # concurrent OPEN positions (which this single-position engine caps
+        # at 1 regardless of this setting).
+        cfg = self._cfg()
+        cfg.risk.max_concurrent = 0
+        res = Backtester(cfg).run(synthetic_m5(20000, seed=6))
+        self.assertTrue(res.trades, "trades stopped firing once max_concurrent was set to 0 - "
+                                    "pending orders are still gating concurrency")
+
+    def test_daily_cap_cancels_orders_queued_before_it_was_hit(self):
+        # A pending order carries no risk, so it no longer blocks new signals
+        # from being queued behind it - but that means an order queued
+        # before the daily cap was reached must not be allowed to fill AFTER
+        # it, or the cap is meaningless once more than one order can be in
+        # flight. This is the failure mode the fix above could reopen.
+        cfg = self._cfg()
+        cfg.risk.max_trades_per_day = 1
+        res = Backtester(cfg).run(synthetic_m5(20000, seed=6))
+        per_day: dict[str, int] = {}
+        for t in res.trades:
+            per_day[t.day] = per_day.get(t.day, 0) + 1
+        self.assertTrue(all(v <= 1 for v in per_day.values()), per_day)
+
+    def test_stop_wins_when_a_bar_contains_both_levels(self):
+        cfg = self._cfg()
+        cfg.costs.spread = 0.0
+        cfg.costs.slippage_entry = 0.0
+        cfg.costs.slippage_stop = 0.0
+        cfg.costs.commission_per_lot = 0.0
+        from ictgold.backtest import OpenPosition, Trade
+        t = Trade(setup="x", direction=BULL, signal_ts=c(0, 1, 1, 1, 1).ts,
+                  entry_ts=c(0, 1, 1, 1, 1).ts, exit_ts=None, entry=2000.0,
+                  stop=1990.0, target=2020.0, lots=0.1, risk_usd=100.0, score=0.6,
+                  killzone="ny_am", dow="Mon", day="2024-06-03")
+        pos = OpenPosition(t, stop=1990.0, target=2020.0, remaining_lots=0.1, entry_bar=0)
+        bt = Backtester(cfg)
+        equity, closed = bt._manage(pos, c(5, 2000, 2025, 1985, 2010), 1, 10_000.0)
+        self.assertTrue(closed)
+        self.assertEqual(t.exit_reason, "stop")
+        self.assertAlmostEqual(t.r, -1.0, places=6)
+
+    def test_costs_make_a_stop_out_worse_than_minus_one_r(self):
+        cfg = self._cfg()
+        from ictgold.backtest import OpenPosition, Trade
+        t = Trade(setup="x", direction=BULL, signal_ts=c(0, 1, 1, 1, 1).ts,
+                  entry_ts=c(0, 1, 1, 1, 1).ts, exit_ts=None, entry=2000.0,
+                  stop=1990.0, target=2020.0, lots=0.1, risk_usd=100.0, score=0.6,
+                  killzone="ny_am", dow="Mon", day="2024-06-03")
+        pos = OpenPosition(t, stop=1990.0, target=2020.0, remaining_lots=0.1, entry_bar=0)
+        Backtester(cfg)._manage(pos, c(5, 2000, 2005, 1985, 1995), 1, 10_000.0)
+        self.assertLess(t.r, -1.0)
+
+    def test_risk_per_trade_is_respected_by_position_size(self):
+        cfg = self._cfg()
+        res = Backtester(cfg).run(synthetic_m5(8000, seed=4))
+        for t in res.trades:
+            planned = abs(t.entry - t.stop) * cfg.symbol.contract_size * t.lots
+            self.assertLessEqual(planned, t.risk_usd * 1.35,
+                                 "position size exceeds the configured risk")
+
+    def test_fixed_rr_setups_score_full_marks_on_the_rr_factor(self):
+        # target_mode="rr" makes reward == dist * fixed_rr by construction,
+        # so rr always equals min_rr on any signal that clears the veto above
+        # it - the score must not quietly grade every such trade 0.0 on this
+        # factor just because it landed exactly on the bar it was built to hit.
+        from ictgold.pipeline import EntryPipeline
+        cfg = self._cfg()
+        for s in cfg.setups:
+            self.assertEqual(s.target_mode, "rr", "test assumes the fixed 1:2R default")
+        pipe = EntryPipeline(cfg)
+        seen_signal = False
+        candles = synthetic_m5(15000, seed=4)
+        ltf, htf = MarketModel(cfg.model), MarketModel(cfg.htf_model)
+        for k in candles:
+            htf.update(k)  # feeding every bar is fine here: only rr scoring is under test
+            ltf.update(k)
+            for r in pipe.run(ltf, htf, 10_000.0):
+                if r.signal is not None:
+                    seen_signal = True
+                    self.assertAlmostEqual(r.signal.evidence["score"]["rr"], 1.0)
+        self.assertTrue(seen_signal, "no signal fired across 15000 bars - widen the smoke test")
+
+    def test_stop_respects_the_cost_floor(self):
+        cfg = self._cfg()
+        floor = (cfg.costs.spread + cfg.costs.slippage_entry + cfg.costs.slippage_stop) \
+            * cfg.risk.min_stop_cost_mult
+        res = Backtester(cfg).run(synthetic_m5(8000, seed=4))
+        for t in res.trades:
+            self.assertGreaterEqual(abs(t.entry - t.stop), floor * 0.95)
+
+    def test_rejection_bar_requires_reach_close_and_wick(self):
+        from ictgold.backtest import _is_rejection_bar
+        zone_top, zone_bottom = 100.0, 98.0
+        # Strong bullish rejection: dips into the zone, closes well above it,
+        # long lower wick.
+        strong = c(0, 100.2, 100.5, 97.5, 100.3)
+        self.assertTrue(_is_rejection_bar(strong, BULL, zone_top, zone_bottom, 0.33))
+        # Never reached the zone at all.
+        no_touch = c(0, 101.0, 101.5, 100.5, 101.2)
+        self.assertFalse(_is_rejection_bar(no_touch, BULL, zone_top, zone_bottom, 0.33))
+        # Reached it but closed back inside/below - no rejection, price
+        # accepted the level rather than defending it.
+        accepted = c(0, 99.5, 99.6, 97.0, 98.5)
+        self.assertFalse(_is_rejection_bar(accepted, BULL, zone_top, zone_bottom, 0.33))
+        # Reached and closed above, but the wick is too small relative to
+        # the bar's range - a drift past the line, not a rejection.
+        weak_wick = c(0, 99.9, 100.6, 99.8, 100.5)
+        self.assertFalse(_is_rejection_bar(weak_wick, BULL, zone_top, zone_bottom, 0.33))
+        # Mirror case for BEAR.
+        strong_bear = c(0, 97.8, 100.5, 97.5, 97.7)
+        self.assertTrue(_is_rejection_bar(strong_bear, BEAR, zone_top, zone_bottom, 0.33))
+
+    def test_disabled_setup_produces_nothing(self):
+        cfg = self._cfg()
+        for s in cfg.setups:
+            s.enabled = False
+        res = Backtester(cfg).run(synthetic_m5(3000, seed=2))
+        self.assertEqual(res.trades, [])
+        self.assertEqual(res.signals_generated, 0)
+
+class TestMetrics(unittest.TestCase):
+    def _trades(self, rs: list[float]):
+        from ictgold.backtest import Trade
+        out = []
+        for i, r in enumerate(rs):
+            t = Trade(setup="s", direction=BULL, signal_ts=c(i, 1, 1, 1, 1).ts,
+                      entry_ts=c(i, 1, 1, 1, 1).ts, exit_ts=c(i + 1, 1, 1, 1, 1).ts,
+                      entry=2000, stop=1990, target=2020, lots=0.1, risk_usd=100,
+                      score=0.6, killzone="ny_am", dow="Mon", day="2024-06-03")
+            t.r = r
+            t.pnl = r * 100
+            out.append(t)
+        return out
+
+    def test_summary_arithmetic(self):
+        s = summarize(self._trades([2.0, -1.0, -1.0, 3.0]), 10_000)
+        self.assertEqual(s.trades, 4)
+        self.assertEqual(s.wins, 2)
+        self.assertAlmostEqual(s.win_rate, 0.5)
+        self.assertAlmostEqual(s.total_r, 3.0)
+        self.assertAlmostEqual(s.expectancy_r, 0.75)
+        self.assertAlmostEqual(s.profit_factor, 500 / 200)
+
+    def test_max_drawdown_measures_peak_to_trough(self):
+        s = summarize(self._trades([1.0, -1.0, -1.0, -1.0, 2.0]), 10_000)
+        self.assertAlmostEqual(s.max_dd_r, 3.0)
+        self.assertEqual(s.max_consec_losses, 3)
+
+    def test_required_sample_grows_with_noise(self):
+        tight = required_sample(0.2, 1.0)
+        noisy = required_sample(0.2, 2.0)
+        self.assertGreater(noisy, tight)
+        self.assertEqual(required_sample(-0.1, 1.0), -1)
+
+    def test_no_t_statistic_below_the_sample_floor(self):
+        few = summarize(self._trades([-1.2, -1.19]), 10_000)
+        self.assertEqual(few.t_stat, 0.0, "a t-stat from 2 trades is a division artefact")
+        many = summarize(self._trades([2.0, -1.0] * MIN_N_FOR_T), 10_000)
+        self.assertNotEqual(many.t_stat, 0.0)
+
+    def test_walk_forward_oos_segments_do_not_overlap(self):
+        folds = walk_forward_folds(10_000, folds=5, is_ratio=0.7)
+        self.assertEqual(len(folds), 5)
+        for f in folds:
+            self.assertLess(f.is_start, f.is_end)
+            self.assertEqual(f.oos_start, f.is_end)
+        for a, b in zip(folds, folds[1:]):
+            self.assertLessEqual(a.oos_end, b.oos_start)
+
+
+class TestChart(unittest.TestCase):
+    def _candles(self, n=60, seed=2):
+        return synthetic_m5(n, seed=seed, start=datetime(2024, 6, 3, 12, 0, tzinfo=UTC))
+
+    def test_find_index_matches_exact_and_before(self):
+        candles = self._candles()
+        exact = _find_index(candles, candles[10].ts)
+        self.assertEqual(exact, 10)
+        between = _find_index(candles, candles[10].ts + timedelta(minutes=2))
+        self.assertEqual(between, 10)
+        before_start = _find_index(candles, candles[0].ts - timedelta(minutes=5))
+        self.assertIsNone(before_start)
+
+    def test_svg_for_trade_embeds_price_lines_and_is_well_formed(self):
+        candles = self._candles()
+        trade = ChartTrade(
+            setup="judas_reversal", side="LONG", entry_ts=candles[20].ts,
+            exit_ts=candles[25].ts, entry=candles[20].close,
+            stop=candles[20].close - 5, target=candles[20].close + 10,
+            exit_price=candles[25].close, r=1.5, exit_reason="target",
+            score=0.6, killzone="ny_am",
+        )
+        svg = svg_for_trade(candles, trade)
+        self.assertIsNotNone(svg)
+        self.assertTrue(svg.startswith("<svg"))
+        self.assertTrue(svg.endswith("</svg>"))
+        for label in ("entry", "stop", "target"):
+            self.assertIn(label, svg)
+
+    def test_svg_for_trade_returns_none_when_entry_predates_all_candles(self):
+        candles = self._candles()
+        trade = ChartTrade(
+            setup="x", side="LONG", entry_ts=candles[0].ts - timedelta(hours=1),
+            exit_ts=candles[5].ts, entry=1.0, stop=0.9, target=1.2,
+            exit_price=1.1, r=1.0, exit_reason="target", score=0.6, killzone="ny_am",
+        )
+        self.assertIsNone(svg_for_trade(candles, trade))
+
+    def test_render_html_filters_by_setup_and_outcome_before_limit(self):
+        candles = self._candles()
+
+        def rec(i, setup, r, reason):
+            return {"setup": setup, "side": "LONG",
+                    "entry_ts": candles[i].ts.isoformat(),
+                    "exit_ts": candles[i + 3].ts.isoformat(),
+                    "entry": candles[i].close, "stop": candles[i].close - 1,
+                    "target": candles[i].close + 2, "exit": candles[i + 3].close,
+                    "r": r, "exit_reason": reason, "score": 0.6, "killzone": "ny_am"}
+
+        trades = [rec(10, "a", 1.5, "target"), rec(20, "b", -1.0, "stop"),
+                  rec(30, "a", -1.0, "stop"), rec(40, "a", 0.8, "target")]
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            out = f"{d}/c.html"
+            n = render_html(candles, trades, out, setup="a", outcome="win")
+            self.assertEqual(n, 2)  # the two "a" wins, "b" and the "a" loss excluded
+            n2 = render_html(candles, trades, out, setup="a", outcome="win", limit=1)
+            self.assertEqual(n2, 1)
+
+    def test_render_html_reports_zero_when_nothing_matches(self):
+        import tempfile
+        candles = self._candles()
+        with tempfile.TemporaryDirectory() as d:
+            n = render_html(candles, [], f"{d}/c.html")
+        self.assertEqual(n, 0)
+
+
+class TestDataIO(unittest.TestCase):
+    def test_csv_roundtrip(self):
+        import tempfile
+        candles = synthetic_m5(50, seed=1)
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "x.csv"
+            save_csv(candles, p)
+            back = load_csv(p)
+        self.assertEqual(len(back), len(candles))
+        self.assertAlmostEqual(back[0].open, candles[0].open)
+        self.assertEqual(back[0].ts, candles[0].ts)
+
+    def test_broker_timezone_is_converted_to_utc(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "b.csv"
+            p.write_text("time,open,high,low,close,volume\n"
+                         "2024-06-03 10:00:00,2300,2301,2299,2300.5,10\n", encoding="utf-8")
+            utc = load_csv(p, source_tz="UTC")[0]
+            broker = load_csv(p, source_tz="Europe/Athens")[0]  # UTC+3 in June
+        self.assertEqual(utc.ts.hour, 10)
+        self.assertEqual(broker.ts.hour, 7)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
