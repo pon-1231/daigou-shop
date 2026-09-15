@@ -80,6 +80,12 @@
     font-size: 10px; font-weight: 700; border-radius: 999px; min-width: 18px; height: 18px;
     display: flex; align-items: center; justify-content: center; font-family: var(--font-mono);
   }
+  .gallery-card .gc-itemno {
+    position: absolute; top: 4px; left: 4px; background: var(--bg-elevated); color: var(--ink-soft);
+    font-size: 9.5px; font-weight: 700; border-radius: 999px; min-width: 16px; height: 16px; padding: 0 3px;
+    display: flex; align-items: center; justify-content: center; font-family: var(--font-mono);
+    border: 1px solid var(--line-strong);
+  }
 
   .size-picker {
     margin-top: 10px; padding: 12px; border-radius: var(--radius-sm); background: var(--accent-soft);
@@ -604,10 +610,12 @@
       : 'NT$' + fmt(prices[0]);
     var variantIds = group.variants.map(function (v) { return v.id; });
     var countInCart = cart.filter(function (c) { return variantIds.indexOf(c.productId) !== -1; }).length;
+    var itemNo = group.variants[0] && group.variants[0].item_no != null ? group.variants[0].item_no : null;
 
     var card = document.createElement('div');
     card.className = 'gallery-card';
     card.innerHTML =
+      (itemNo != null ? '<div class="gc-itemno">' + itemNo + '</div>' : '') +
       (thumbUrl ? '<img src="' + escapeHtml(thumbUrl) + '" alt="">' : '<div class="gc-placeholder">🖼️</div>') +
       '<div class="gc-name">' + escapeHtml(group.name) + '</div>' +
       '<div class="gc-price">' + priceLabel + '</div>' +

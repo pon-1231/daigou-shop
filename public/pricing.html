@@ -1518,6 +1518,7 @@
     var original = btn.textContent;
     btn.disabled = true;
     try {
+      var lastSavedItemNo = null;
       for (var i = 0; i < combos.length; i++) {
         var combo = combos[i];
         var override = comboOverrides[combo.key];
@@ -1530,6 +1531,7 @@
         });
         if (!res.ok) throw new Error();
         var saved = await res.json();
+        if (saved.item_no != null) lastSavedItemNo = saved.item_no;
         comboOverrides[combo.key] = Object.assign({}, override, { dbId: saved.id, cost: Number(saved.actual_cost) || 0, price: Number(saved.final_price) || 0 });
         var idx = allSavedItems.findIndex(function (x) { return x.id === saved.id; });
         if (idx !== -1) allSavedItems[idx] = saved; else allSavedItems.unshift(saved);
@@ -1545,6 +1547,9 @@
       var msg = combos.length > 1 ? '已一次存好 ' + combos.length + ' 筆' : (isEditing ? '已更新' : '已加入清單');
       if (idsToDelete.length > 0) msg += '，並刪除 ' + idsToDelete.length + ' 筆（可在下方「最近刪除」還原）';
       showToast(msg);
+
+      /* 存完自動把編號往下接一號，方便連續編輯/新增同一個分類群組的商品時不用每次手動打下一個號碼。 */
+      if (lastSavedItemNo != null) { $('productItemNo').value = lastSavedItemNo + 1; }
 
       resetSpecState();
       renderSavedList($('searchSaved').value);
