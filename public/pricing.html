@@ -507,6 +507,7 @@
   var specMode = 0;
   var unifyPrice = true;
   var comboOverrides = {};
+  var autoNextItemNo = null; // { value, group } —— 記錄自動往下接的編號是算給哪個分類群組的，換群組時要失效
 
   var savedFx = null;
   try { savedFx = localStorage.getItem('daigou_fx_rate'); } catch (e) {}
@@ -1492,6 +1493,13 @@
   });
 
   $('saveItem').addEventListener('click', async function () {
+    /* 自動往下接的編號只對「當時那個分類群組」有效，如果存檔前群組被換掉(不管是打字還是點快速按鈕)
+       又沒手動改編號，這裡要把它清掉，讓伺服器照目前這個群組重新算正確的下一號，不要沿用舊群組的號碼。 */
+    if (autoNextItemNo && $('productItemNo').value.trim() === String(autoNextItemNo.value) && $('productGroup').value.trim() !== autoNextItemNo.group) {
+      $('productItemNo').value = '';
+    }
+    autoNextItemNo = null;
+
     var combos = computeCombos().filter(function (c) {
       var o = comboOverrides[c.key];
       return !(o && o.excluded);
@@ -1548,8 +1556,13 @@
       if (idsToDelete.length > 0) msg += '，並刪除 ' + idsToDelete.length + ' 筆（可在下方「最近刪除」還原）';
       showToast(msg);
 
-      /* 存完自動把編號往下接一號，方便連續編輯/新增同一個分類群組的商品時不用每次手動打下一個號碼。 */
-      if (lastSavedItemNo != null) { $('productItemNo').value = lastSavedItemNo + 1; }
+      /* 存完自動把編號往下接一號，方便連續編輯/新增同一個分類群組的商品時不用每次手動打下一個號碼。
+         同時記住這是算給哪個群組的，下次存檔如果群組被換掉，上面那段檢查會把它清掉，不會沿用錯的號碼。 */
+      if (lastSavedItemNo != null) {
+        var nextNo = lastSavedItemNo + 1;
+        $('productItemNo').value = nextNo;
+        autoNextItemNo = { value: nextNo, group: $('productGroup').value.trim() };
+      }
 
       resetSpecState();
       renderSavedList($('searchSaved').value);
