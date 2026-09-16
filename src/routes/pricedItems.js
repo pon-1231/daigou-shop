@@ -59,6 +59,7 @@ async function nextItemNoInGroup(supabase, sortGroup) {
   let maxQuery = supabase
     .from('priced_items')
     .select('item_no')
+    .is('deleted_at', null)
     .order('item_no', { ascending: false, nullsFirst: false })
     .limit(1);
   maxQuery = sortGroup ? maxQuery.eq('sort_group', sortGroup) : maxQuery.is('sort_group', null);
