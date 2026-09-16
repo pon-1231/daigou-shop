@@ -1521,6 +1521,18 @@
       if (o && o.dbId && !keptKeys[key]) idsToDelete.push(o.dbId);
     });
 
+    /* 一次存多筆組合、編號欄位又留空時，同一個商品的每一筆都要用同一個編號，
+       不然每一筆各自跟伺服器要號碼會越疊越高(例如 S/M/L/XL 變成 4 個不同號碼)。
+       先看能不能從正在編輯的既有資料裡找到現成的編號沿用；找不到才在第一筆存完後，
+       把伺服器配的那個號碼鎖住給其餘幾筆用。 */
+    if (!$('productItemNo').value.trim()) {
+      for (var k = 0; k < combos.length; k++) {
+        var ov0 = comboOverrides[combos[k].key];
+        var existing0 = ov0 && ov0.dbId && allSavedItems.find(function (x) { return x.id === ov0.dbId; });
+        if (existing0 && existing0.item_no != null) { $('productItemNo').value = existing0.item_no; break; }
+      }
+    }
+
     var btn = $('saveItem');
     var isEditing = !!editingId;
     var original = btn.textContent;
@@ -1540,6 +1552,9 @@
         if (!res.ok) throw new Error();
         var saved = await res.json();
         if (saved.item_no != null) lastSavedItemNo = saved.item_no;
+        /* 全新商品、編號欄位一開始就留空：用第一筆存完伺服器配到的號碼，鎖回欄位裡給剩下幾筆共用，
+           不要讓每一筆都各自留空、各自跟伺服器要一個號碼。 */
+        if (i === 0 && payload.itemNo === '' && saved.item_no != null) { $('productItemNo').value = saved.item_no; }
         comboOverrides[combo.key] = Object.assign({}, override, { dbId: saved.id, cost: Number(saved.actual_cost) || 0, price: Number(saved.final_price) || 0 });
         var idx = allSavedItems.findIndex(function (x) { return x.id === saved.id; });
         if (idx !== -1) allSavedItems[idx] = saved; else allSavedItems.unshift(saved);
