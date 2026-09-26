@@ -202,6 +202,24 @@
     font-family: var(--font-mono); font-variant-numeric: tabular-nums;
   }
 
+  /* ---------- Product status lookup ---------- */
+  .product-status-lookup summary { display: flex; align-items: center; }
+  .psl-body { margin-top: 10px; }
+  .psl-body select#pslProductSelect {
+    font-size: 13.5px; padding: 7px 12px; border-radius: var(--radius-sm);
+    border: 1px solid var(--line-strong); background: var(--bg-elevated); width: 100%; max-width: 360px;
+  }
+  .psl-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 14px 0 8px; }
+  .psl-selectall { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .psl-list { display: flex; flex-direction: column; gap: 6px; }
+  .psl-row {
+    display: flex; align-items: center; gap: 10px; padding: 9px 12px; flex-wrap: wrap;
+    background: var(--bg-elevated); border: 1px solid var(--line); border-radius: var(--radius-sm); font-size: 13px;
+  }
+  .psl-row .psl-check { flex-shrink: 0; width: 16px; height: 16px; cursor: pointer; }
+  .psl-row .psl-customer { font-weight: 700; flex: 1 1 110px; min-width: 0; }
+  .psl-row .psl-sub { font-size: 11.5px; color: var(--ink-soft); font-family: var(--font-mono); flex: 2 1 200px; }
+
   .period-row { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
   .period-row label { font-size: 13px; font-weight: 600; margin: 0; }
   .period-row select { font-size: 13.5px; padding: 7px 12px; border-radius: var(--radius-sm); border: 1px solid var(--line-strong); background: var(--bg-elevated); }
@@ -327,6 +345,33 @@
   <details class="product-breakdown" id="productBreakdown" open>
     <summary>各商品總計<span class="count-badge" id="productBreakdownCount">0</span></summary>
     <div class="pb-table" id="productBreakdownTable"><p class="empty-state">還沒有資料。</p></div>
+  </details>
+
+  <details class="panel product-status-lookup" id="productStatusLookup">
+    <summary class="panel-pad">商品訂購狀態查詢</summary>
+    <div class="panel-pad psl-body">
+      <p class="hint" style="margin:0 0 10px;">選一項商品，看有哪些客人下訂、目前狀態，可以直接改狀態或全選批次更新（不受上面「檢視期間」篩選影響）。</p>
+      <select id="pslProductSelect"><option value="">選擇一項商品…</option></select>
+
+      <div id="pslContent" style="display:none;">
+        <div class="psl-head">
+          <label class="psl-selectall"><input type="checkbox" id="pslSelectAll"> 全選</label>
+          <span class="count-badge" id="pslCount">0</span>
+        </div>
+        <p class="bulk-bar" id="pslBulkBar" style="display:none;">
+          <span id="pslBulkCount">0 筆已選取</span>
+          <select id="pslBulkStatus">
+            <option value="待處理">待處理</option>
+            <option value="已下貨">已下貨</option>
+            <option value="已出貨">已出貨</option>
+            <option value="已完成">已完成</option>
+          </select>
+          <button type="button" class="btn small primary" id="pslBulkApply">批次移動</button>
+          <button type="button" id="pslBulkClear">✕ 取消選取</button>
+        </p>
+        <div class="psl-list" id="pslList"></div>
+      </div>
+    </div>
   </details>
 
   <div class="layout">
@@ -1438,7 +1483,182 @@
     renderProductBreakdown(base);
     renderStatusOverview(base);
     renderOrderList(base);
+    renderProductStatusOptions();
+    renderProductStatusLookup();
   }
+
+  /* ---------- Product status lookup ---------- */
+  /* 獨立於上面「檢視期間」篩選之外：選一項商品，列出所有訂過它的客人跟訂單狀態，
+     可以逐筆改狀態，也可以勾選多筆（含全選）批次改，方便出貨時追蹤同一項商品還有誰沒出。 */
+
+  var pslSelectedProduct = null;
+  var pslSelectedOrderIds = new Set();
+
+  function collectProductNames() {
+    var seen = {};
+    var names = [];
+    allOrders.forEach(function (o) {
+      (o.order_items || []).forEach(function (it) {
+        var n = it.item_name || '未命名商品';
+        if (!seen[n]) { seen[n] = true; names.push(n); }
+      });
+    });
+    names.sort(function (a, b) { return a.localeCompare(b, 'zh-Hant'); });
+    return names;
+  }
+
+  function renderProductStatusOptions() {
+    var names = collectProductNames();
+    if (pslSelectedProduct && names.indexOf(pslSelectedProduct) === -1) {
+      pslSelectedProduct = null;
+      pslSelectedOrderIds.clear();
+    }
+    var sel = $('pslProductSelect');
+    sel.innerHTML = '<option value="">選擇一項商品…</option>' +
+      names.map(function (n) {
+        return '<option value="' + escapeHtml(n) + '"' + (n === pslSelectedProduct ? ' selected' : '') + '>' + escapeHtml(n) + '</option>';
+      }).join('');
+  }
+
+  function syncPslSelectAll(total) {
+    var box = $('pslSelectAll');
+    box.checked = total > 0 && pslSelectedOrderIds.size === total;
+    box.indeterminate = pslSelectedOrderIds.size > 0 && pslSelectedOrderIds.size < total;
+  }
+
+  function updatePslBulkBar() {
+    var bar = $('pslBulkBar');
+    if (pslSelectedOrderIds.size === 0) { bar.style.display = 'none'; return; }
+    bar.style.display = '';
+    $('pslBulkCount').textContent = pslSelectedOrderIds.size + ' 筆已選取';
+  }
+
+  async function pslUpdateOrderStatus(orderId, newStatus, onFail) {
+    try {
+      var res = await fetch('/api/orders/' + orderId, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderStatus: newStatus })
+      });
+      if (!res.ok) throw new Error();
+      var updated = await res.json();
+      var order = allOrders.find(function (o) { return o.id === updated.id; });
+      if (order) { order.order_status = updated.order_status; order.status_updated_at = updated.status_updated_at; }
+      return true;
+    } catch (e) {
+      if (onFail) onFail();
+      return false;
+    }
+  }
+
+  function renderProductStatusLookup() {
+    var wrap = $('pslContent');
+    if (!pslSelectedProduct) { wrap.style.display = 'none'; return; }
+    wrap.style.display = '';
+
+    var rows = [];
+    allOrders.forEach(function (o) {
+      var matched = (o.order_items || []).filter(function (it) { return (it.item_name || '未命名商品') === pslSelectedProduct; });
+      if (matched.length === 0) return;
+      var sizes = matched.map(function (it) { return it.size || ''; }).filter(Boolean);
+      rows.push({ order: o, count: matched.length, sizes: sizes });
+    });
+    rows.sort(function (a, b) { return (b.order.sold_at || '').localeCompare(a.order.sold_at || ''); });
+
+    var visibleIds = {};
+    rows.forEach(function (r) { visibleIds[r.order.id] = true; });
+    Array.from(pslSelectedOrderIds).forEach(function (id) { if (!visibleIds[id]) pslSelectedOrderIds.delete(id); });
+
+    $('pslCount').textContent = rows.length;
+    var listEl = $('pslList');
+    listEl.innerHTML = '';
+
+    if (rows.length === 0) {
+      listEl.innerHTML = '<p class="empty-state">目前沒有人訂購這項商品。</p>';
+      syncPslSelectAll(0);
+      updatePslBulkBar();
+      return;
+    }
+
+    rows.forEach(function (r) {
+      var o = r.order;
+      var status = ORDER_STATUSES.indexOf(o.order_status) !== -1 ? o.order_status : ORDER_STATUSES[0];
+      var statusOptions = ORDER_STATUSES.map(function (s) {
+        return '<option value="' + s + '"' + (s === status ? ' selected' : '') + '>' + s + '</option>';
+      }).join('');
+      var sizeLabel = r.sizes.length ? r.sizes.join('、') : '';
+
+      var row = document.createElement('div');
+      row.className = 'psl-row';
+      row.innerHTML =
+        '<input type="checkbox" class="psl-check"' + (pslSelectedOrderIds.has(o.id) ? ' checked' : '') + '>' +
+        '<span class="psl-customer">' + escapeHtml(o.customer_name || '未填客人名稱') + '</span>' +
+        '<span class="psl-sub">' + escapeHtml(o.sold_at || '') + (sizeLabel ? ' · ' + escapeHtml(sizeLabel) : '') + (r.count > 1 ? ' · 共 ' + r.count + ' 件' : '') + '</span>' +
+        '<select class="status-select s-' + status + '">' + statusOptions + '</select>';
+      listEl.appendChild(row);
+
+      row.querySelector('.psl-check').addEventListener('change', function () {
+        if (this.checked) pslSelectedOrderIds.add(o.id); else pslSelectedOrderIds.delete(o.id);
+        syncPslSelectAll(rows.length);
+        updatePslBulkBar();
+      });
+
+      var statusSelect = row.querySelector('select');
+      statusSelect.addEventListener('change', async function () {
+        var newStatus = this.value;
+        var ok = await pslUpdateOrderStatus(o.id, newStatus, function () { statusSelect.value = status; });
+        if (ok) { renderAll(); showToast('狀態已更新'); }
+        else { showToast('更新失敗，請再試一次'); }
+      });
+    });
+
+    syncPslSelectAll(rows.length);
+    updatePslBulkBar();
+  }
+
+  $('pslProductSelect').addEventListener('change', function () {
+    pslSelectedProduct = this.value || null;
+    pslSelectedOrderIds.clear();
+    renderProductStatusLookup();
+  });
+
+  $('pslSelectAll').addEventListener('change', function () {
+    var checked = this.checked;
+    Array.from($('pslList').querySelectorAll('.psl-check')).forEach(function (cb, idx) {
+      cb.checked = checked;
+    });
+    pslSelectedOrderIds.clear();
+    if (checked) {
+      allOrders.forEach(function (o) {
+        var hasProduct = (o.order_items || []).some(function (it) { return (it.item_name || '未命名商品') === pslSelectedProduct; });
+        if (hasProduct) pslSelectedOrderIds.add(o.id);
+      });
+    }
+    updatePslBulkBar();
+  });
+
+  $('pslBulkClear').addEventListener('click', function () {
+    pslSelectedOrderIds.clear();
+    renderProductStatusLookup();
+  });
+
+  $('pslBulkApply').addEventListener('click', async function () {
+    var newStatus = $('pslBulkStatus').value;
+    var ids = Array.from(pslSelectedOrderIds);
+    if (ids.length === 0) return;
+    var btn = this;
+    btn.disabled = true;
+    try {
+      var results = await Promise.all(ids.map(function (id) { return pslUpdateOrderStatus(id, newStatus); }));
+      var failed = results.filter(function (ok) { return !ok; }).length;
+      pslSelectedOrderIds.clear();
+      renderAll();
+      showToast(failed > 0 ? (failed + ' 筆更新失敗') : '已批次更新狀態');
+    } catch (e) {
+      showToast('批次更新失敗，請再試一次');
+    } finally {
+      btn.disabled = false;
+    }
+  });
 
   /* ---------- Bulk status move ---------- */
 
