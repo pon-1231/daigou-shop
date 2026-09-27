@@ -202,11 +202,9 @@
     font-family: var(--font-mono); font-variant-numeric: tabular-nums;
   }
 
-  /* ---------- Customer purchase summary (click customer name in order list) ---------- */
-  .oc-customer { cursor: pointer; }
-  @media (hover: hover) { .oc-customer:hover { text-decoration: underline; } }
-  .oc-customer-summary {
-    margin-top: 8px; padding: 8px 10px; background: var(--accent-soft); border-radius: var(--radius-sm);
+  /* ---------- Selected-orders combined summary ---------- */
+  .bulk-summary {
+    margin: -8px 0 12px; padding: 10px 14px; background: var(--accent-soft); border-radius: var(--radius-sm);
     display: flex; flex-direction: column; gap: 4px;
   }
   .ocs-head { font-weight: 700; color: var(--accent); font-size: 11.5px; }
@@ -445,6 +443,7 @@
         <button type="button" class="btn small primary" id="bulkApply">批次移動</button>
         <button type="button" id="bulkClear">✕ 取消選取</button>
       </p>
+      <div class="bulk-summary" id="bulkSummary" style="display:none;"></div>
       <div class="order-list" id="orderList"><p class="empty-state">載入中…</p></div>
     </section>
   </div>
@@ -1325,8 +1324,7 @@
       card.innerHTML =
         '<input type="checkbox" class="oc-check" data-action="select"' + (selectedOrderIds.has(o.id) ? ' checked' : '') + '>' +
         '<div class="oc-body">' +
-          '<div class="oc-top"><span class="oc-customer" data-action="customer-summary" title="看這位客人總共買過什麼">' + escapeHtml(o.customer_name || '未填客人名稱') + '</span><span class="oc-date">' + escapeHtml(o.sold_at) + '</span></div>' +
-          '<div class="oc-customer-summary" data-summary style="display:none;"></div>' +
+          '<div class="oc-top"><span class="oc-customer">' + escapeHtml(o.customer_name || '未填客人名稱') + '</span><span class="oc-date">' + escapeHtml(o.sold_at) + '</span></div>' +
           '<div class="oc-controls">' +
             '<select class="status-select s-' + status + '" data-action="status">' + statusOptions + '</select>' +
             (o.status_updated_at ? '<span class="status-updated-note">狀態更新：' + formatDateTime(o.status_updated_at) + '</span>' : '') +
@@ -1350,13 +1348,6 @@
         '</div>';
 
       listEl.appendChild(card);
-
-      card.querySelector('[data-action="customer-summary"]').addEventListener('click', function () {
-        var panel = card.querySelector('[data-summary]');
-        if (panel.style.display !== 'none') { panel.style.display = 'none'; return; }
-        panel.style.display = '';
-        panel.innerHTML = buildCustomerSummaryHtml(o.customer_name || '未填客人名稱');
-      });
 
       card.querySelector('[data-action="history"]').addEventListener('click', async function () {
         var panel = card.querySelector('[data-history]');
@@ -1460,41 +1451,45 @@
     renderOrderList(base);
   }
 
-  /* ---------- Customer purchase summary ---------- */
-  /* 點訂單卡片上的客人名稱，展開這位客人「跨所有訂單」總共買了什麼、各是什麼尺寸，
-     不侷限在目前這張訂單裡；狀態要改就用卡片上原本就有的狀態下拉選單，這裡不重做一次。 */
+  /* ---------- Selected-orders combined summary ---------- */
+  /* 勾選訂單列表上的 checkbox（可以跨不同客人）之後，除了原本的批次改狀態，
+     也彙總這幾張被勾選的訂單總共買了什麼、各是什麼尺寸，方便出貨前一次看完要備的貨。 */
 
-  function buildCustomerSummaryHtml(customerName) {
-    var matches = allOrders.filter(function (o) { return (o.customer_name || '未填客人名稱') === customerName; });
+  function buildSelectedOrdersSummaryHtml(ids) {
+    var idSet = {};
+    ids.forEach(function (id) { idSet[id] = true; });
+    var matches = allOrders.filter(function (o) { return idSet[o.id]; });
     var byKey = {};
     var order = [];
     matches.forEach(function (o) {
       (o.order_items || []).forEach(function (it) {
         var name = it.item_name || '未命名商品';
         var size = it.size || '';
-        var key = name + '' + size;
+        var key = name + '::' + size;
         if (!byKey[key]) { byKey[key] = { name: name, size: size, qty: 0 }; order.push(key); }
         byKey[key].qty += 1;
       });
     });
-    if (order.length === 0) return '<p class="empty-state">沒有其他購買紀錄。</p>';
+    if (order.length === 0) return '';
     var totalQty = order.reduce(function (s, k) { return s + byKey[k].qty; }, 0);
     var rows = order.map(function (k) {
       var r = byKey[k];
       return '<div class="ocs-row"><span>' + escapeHtml(r.name) + (r.size ? ' <span class="ocs-size">(' + escapeHtml(r.size) + ')</span>' : '') + '</span><span class="ocs-qty">x' + r.qty + '</span></div>';
     }).join('');
-    return '<div class="ocs-head">共 ' + matches.length + ' 張訂單 · ' + totalQty + ' 件</div>' + rows;
+    return '<div class="ocs-head">已選 ' + matches.length + ' 張訂單，總共買了：</div>' + rows + '<div class="ocs-head">共 ' + totalQty + ' 件</div>';
   }
-
-  /* ---------- Bulk status move ---------- */
 
   function updateBulkBar() {
     var bar = $('bulkBar');
+    var summary = $('bulkSummary');
     if (selectedOrderIds.size === 0) {
       bar.style.display = 'none';
+      summary.style.display = 'none';
     } else {
       bar.style.display = '';
       $('bulkCount').textContent = selectedOrderIds.size + ' 筆已選取';
+      summary.innerHTML = buildSelectedOrdersSummaryHtml(Array.from(selectedOrderIds));
+      summary.style.display = '';
     }
   }
 
