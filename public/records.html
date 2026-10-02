@@ -156,6 +156,11 @@
   .cart-row .cr-size { font-size: 10.5px; color: var(--ink-soft); }
   .cart-row .cr-nums { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-soft); white-space: nowrap; }
   .cart-row .cr-remove { background: none; border: none; color: var(--bad); cursor: pointer; font-size: 14px; padding: 0 2px; }
+  .cart-row .cr-qty {
+    width: 44px; text-align: center; font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+    font-size: 12.5px; padding: 3px 2px; border: 1px solid var(--line-strong); border-radius: 6px; flex-shrink: 0;
+  }
+  .cart-row .cr-qty-label { font-size: 10.5px; color: var(--ink-soft); flex-shrink: 0; }
 
   /* ---------- Status overview / breakdown ---------- */
   .status-overview, .product-breakdown { margin-bottom: 22px; }
@@ -262,6 +267,7 @@
   .oc-item .oi-placeholder { display: flex; align-items: center; justify-content: center; font-size: 14px; color: var(--ink-soft); }
   .oc-item .oi-name { flex: 1; min-width: 0; }
   .oc-item .oi-size { font-size: 10.5px; color: var(--ink-soft); }
+  .oc-item .oi-qty { font-size: 10.5px; font-weight: 700; color: var(--accent); }
   .oc-item .oi-nums { font-family: var(--font-mono); color: var(--ink-soft); white-space: nowrap; }
 
   .oc-totals { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12.5px; }
@@ -1013,15 +1019,28 @@
     }
   });
 
-  function addProductToCart(product, size) {
-    cart.push({
-      productId: product.id,
-      itemName: product.name || '未命名商品',
-      size: combineSizeColor(size, product.color),
-      photoUrl: product.photo_url || null,
-      cost: Number(product.actual_cost) || 0,
-      soldPrice: Number(product.final_price) || 0
+  /* 同一個商品+尺寸如果已經在這張訂單裡，直接把數量加一，不要變成好幾行一模一樣的重複項目。 */
+  function findCartEntry(productId, itemName, size, cost, soldPrice) {
+    return cart.find(function (it) {
+      return it.productId === productId && it.itemName === itemName && it.size === size
+        && it.cost === cost && it.soldPrice === soldPrice;
     });
+  }
+
+  function addProductToCart(product, size) {
+    var itemName = product.name || '未命名商品';
+    var fullSize = combineSizeColor(size, product.color);
+    var cost = Number(product.actual_cost) || 0;
+    var soldPrice = Number(product.final_price) || 0;
+    var existing = findCartEntry(product.id, itemName, fullSize, cost, soldPrice);
+    if (existing) {
+      existing.qty += 1;
+    } else {
+      cart.push({
+        productId: product.id, itemName: itemName, size: fullSize,
+        photoUrl: product.photo_url || null, cost: cost, soldPrice: soldPrice, qty: 1
+      });
+    }
     renderCart();
     renderGallery();
   }
@@ -1031,20 +1050,22 @@
   $('manualAddBtn').addEventListener('click', function () {
     var name = $('manualItemName').value.trim();
     if (!name) { showToast('請先輸入商品名稱'); return; }
-    cart.push({
-      productId: null,
-      itemName: name,
-      size: $('manualSize').value.trim(),
-      photoUrl: null,
-      cost: Number($('manualCost').value) || 0,
-      soldPrice: Number($('manualSoldPrice').value) || 0
-    });
+    var size = $('manualSize').value.trim();
+    var cost = Number($('manualCost').value) || 0;
+    var soldPrice = Number($('manualSoldPrice').value) || 0;
+    var existing = findCartEntry(null, name, size, cost, soldPrice);
+    if (existing) {
+      existing.qty += 1;
+    } else {
+      cart.push({ productId: null, itemName: name, size: size, photoUrl: null, cost: cost, soldPrice: soldPrice, qty: 1 });
+    }
     $('manualItemName').value = ''; $('manualSize').value = ''; $('manualCost').value = ''; $('manualSoldPrice').value = '';
     renderCart();
   });
 
   function renderCart() {
-    $('cartCount').textContent = cart.length;
+    var totalQty = cart.reduce(function (s, it) { return s + it.qty; }, 0);
+    $('cartCount').textContent = totalQty;
     var el = $('cartList');
     el.innerHTML = '';
     if (cart.length === 0) {
@@ -1056,9 +1077,19 @@
         row.innerHTML =
           (item.photoUrl ? '<img src="' + escapeHtml(item.photoUrl) + '" alt="">' : '') +
           '<div class="cr-name">' + escapeHtml(item.itemName) + (item.size ? ' <span class="cr-size">(' + escapeHtml(item.size) + ')</span>' : '') + '</div>' +
-          '<div class="cr-nums">NT$' + fmt(item.cost) + ' → NT$' + fmt(item.soldPrice) + '</div>' +
+          '<span class="cr-qty-label">數量</span>' +
+          '<input type="number" class="cr-qty" min="1" step="1" value="' + item.qty + '" data-idx="' + idx + '">' +
+          '<div class="cr-nums">NT$' + fmt(item.cost * item.qty) + ' → NT$' + fmt(item.soldPrice * item.qty) + '</div>' +
           '<button type="button" class="cr-remove" data-idx="' + idx + '">✕</button>';
         el.appendChild(row);
+      });
+      el.querySelectorAll('.cr-qty').forEach(function (input) {
+        input.addEventListener('change', function () {
+          var idx = Number(input.dataset.idx);
+          var val = Math.max(1, Math.round(Number(input.value)) || 1);
+          cart[idx].qty = val;
+          renderCart();
+        });
       });
       el.querySelectorAll('.cr-remove').forEach(function (btn) {
         btn.addEventListener('click', function () {
@@ -1072,8 +1103,8 @@
   }
 
   function updateLiveProfit() {
-    var cost = cart.reduce(function (s, it) { return s + it.cost; }, 0);
-    var soldPrice = cart.reduce(function (s, it) { return s + it.soldPrice; }, 0);
+    var cost = cart.reduce(function (s, it) { return s + it.cost * it.qty; }, 0);
+    var soldPrice = cart.reduce(function (s, it) { return s + it.soldPrice * it.qty; }, 0);
     var profit = soldPrice - cost;
     var margin = soldPrice > 0 ? (profit / soldPrice * 100) : 0;
     var pChip = $('livePofitChip'), mChip = $('liveMarginChip');
@@ -1120,6 +1151,22 @@
       return { start: start || '0000-01-01', end: end || '9999-12-31' };
     }
     return null;
+  }
+
+  /* 顯示用：把同一張訂單裡名稱/尺寸/成本/售價都一樣的商品合併成一行＋數量，純讀取不影響實際存的逐件資料。 */
+  function mergeItemsForDisplay(items) {
+    var merged = [];
+    var map = {};
+    items.forEach(function (it) {
+      var key = (it.item_name || '') + '|||' + (it.size || '') + '|||' + (Number(it.cost) || 0) + '|||' + (Number(it.sold_price) || 0);
+      if (map[key]) { map[key].qty += 1; }
+      else {
+        var entry = { item_name: it.item_name, size: it.size, photo_url: it.photo_url, cost: Number(it.cost) || 0, sold_price: Number(it.sold_price) || 0, qty: 1 };
+        map[key] = entry;
+        merged.push(entry);
+      }
+    });
+    return merged;
   }
 
   function orderProfit(o) {
@@ -1303,13 +1350,13 @@
       var notShippedYet = (status === ORDER_STATUSES[0] || status === ORDER_STATUSES[1]);
       var isOverdue = o.ship_by && o.ship_by < today && notShippedYet;
 
-      var itemsHtml = (o.order_items || []).map(function (it) {
+      var itemsHtml = mergeItemsForDisplay(o.order_items || []).map(function (it) {
         var thumb = it.photo_url
           ? '<img src="' + escapeHtml(it.photo_url) + '" alt="">'
           : '<div class="oi-placeholder">🖼️</div>';
         return '<div class="oc-item">' + thumb +
-          '<span class="oi-name">' + escapeHtml(it.item_name || '未命名商品') + (it.size ? ' <span class="oi-size">(' + escapeHtml(it.size) + ')</span>' : '') + '</span>' +
-          '<span class="oi-nums">NT$' + fmt(it.cost) + ' → NT$' + fmt(it.sold_price) + '</span>' +
+          '<span class="oi-name">' + escapeHtml(it.item_name || '未命名商品') + (it.size ? ' <span class="oi-size">(' + escapeHtml(it.size) + ')</span>' : '') + (it.qty > 1 ? ' <span class="oi-qty">× ' + it.qty + '</span>' : '') + '</span>' +
+          '<span class="oi-nums">NT$' + fmt(it.cost * it.qty) + ' → NT$' + fmt(it.sold_price * it.qty) + '</span>' +
           '</div>';
       }).join('');
 
@@ -1540,8 +1587,14 @@
     $('shipBy').value = o.ship_by || '';
     $('note').value = o.note || '';
 
-    cart = (o.order_items || []).map(function (it) {
-      return { productId: null, itemName: it.item_name, size: it.size || '', photoUrl: it.photo_url || null, cost: Number(it.cost) || 0, soldPrice: Number(it.sold_price) || 0 };
+    /* 訂單存進資料庫時是逐件展開的(一件一行)，讀回來編輯時要先把名稱/尺寸/成本/售價都一樣的合併回同一行、用數量顯示，
+       不然同一個商品買了好幾件，編輯畫面會看到一堆一模一樣的重複行。 */
+    cart = [];
+    (o.order_items || []).forEach(function (it) {
+      var itemName = it.item_name, size = it.size || '', cost = Number(it.cost) || 0, soldPrice = Number(it.sold_price) || 0;
+      var existing = findCartEntry(null, itemName, size, cost, soldPrice);
+      if (existing) { existing.qty += 1; }
+      else { cart.push({ productId: null, itemName: itemName, size: size, photoUrl: it.photo_url || null, cost: cost, soldPrice: soldPrice, qty: 1 }); }
     });
     renderCart();
     renderGallery();
@@ -1617,9 +1670,14 @@
     fd.append('shipBy', $('shipBy').value || '');
     fd.append('note', $('note').value.trim());
     fd.append('soldAt', $('soldAt').value || new Date().toISOString().slice(0, 10));
-    fd.append('items', JSON.stringify(cart.map(function (it) {
-      return { itemName: it.itemName, size: it.size, photoUrl: it.photoUrl, cost: it.cost, soldPrice: it.soldPrice };
-    })));
+    /* 後端資料表沒有數量欄位，一件一行存，所以送出前把每行的數量展開成對應件數的獨立項目。 */
+    var expandedItems = [];
+    cart.forEach(function (it) {
+      for (var n = 0; n < it.qty; n++) {
+        expandedItems.push({ itemName: it.itemName, size: it.size, photoUrl: it.photoUrl, cost: it.cost, soldPrice: it.soldPrice });
+      }
+    });
+    fd.append('items', JSON.stringify(expandedItems));
     if ($('photoInput').files[0]) {
       fd.append('photo', $('photoInput').files[0]);
     } else if (isEditing) {
