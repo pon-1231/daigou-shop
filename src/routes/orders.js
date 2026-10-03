@@ -29,8 +29,55 @@ function parseItems(raw) {
     size: it.size ? String(it.size).slice(0, 50) : null,
     photo_url: it.photoUrl || null,
     cost: Number(it.cost) || 0,
-    sold_price: Number(it.soldPrice) || 0
+    sold_price: Number(it.soldPrice) || 0,
+    // 從商品圖庫選的才有，手動輸入的是 null，null 就不扣庫存
+    priced_item_id: it.productId || null
   }));
+}
+
+/* ---------- 庫存連動 ----------
+   策略跟 order_items 一樣是「整批重算」：訂單有任何變動，就先把這張訂單產生的
+   庫存紀錄全部刪掉，再依訂單目前的內容重新寫一次。這樣改數量、刪商品、刪訂單、
+   從垃圾桶還原全部自動正確，不用寫任何比對前後差異的邏輯。 */
+
+async function clearOrderStockMovements(orderId) {
+  const { error } = await supabase.from('stock_movements').delete().eq('order_id', orderId);
+  if (error) throw error;
+}
+
+async function applyOrderStockMovements(orderId, items) {
+  // 同一個商品買好幾件時，order_items 是一件一行，但庫存紀錄合併成一筆 -N 比較好讀。
+  const qtyByItem = {};
+  items.forEach((it) => {
+    if (!it.priced_item_id) return;
+    qtyByItem[it.priced_item_id] = (qtyByItem[it.priced_item_id] || 0) + 1;
+  });
+
+  const itemIds = Object.keys(qtyByItem);
+  if (itemIds.length === 0) return;
+
+  // 只扣有開啟追蹤的商品，沒在管庫存的不要莫名其妙生出負數。
+  const { data: tracked, error: trackErr } = await supabase
+    .from('priced_items')
+    .select('id')
+    .in('id', itemIds)
+    .eq('track_stock', true);
+  if (trackErr) throw trackErr;
+  if (!tracked || tracked.length === 0) return;
+
+  const rows = tracked.map((t) => ({
+    priced_item_id: t.id,
+    delta: -qtyByItem[t.id],
+    reason: '訂單',
+    order_id: orderId
+  }));
+  const { error } = await supabase.from('stock_movements').insert(rows);
+  if (error) throw error;
+}
+
+async function syncOrderStock(orderId, items) {
+  await clearOrderStockMovements(orderId);
+  if (items && items.length) await applyOrderStockMovements(orderId, items);
 }
 
 async function recordHistory(orderId) {
@@ -120,6 +167,8 @@ router.post('/', (req, res) => {
       const { data: savedItems, error: itemsErr } = await supabase.from('order_items').insert(itemRows).select();
       if (itemsErr) throw itemsErr;
 
+      await syncOrderStock(order.id, savedItems);
+
       order.order_items = savedItems;
       res.status(201).json(order);
     } catch (err) {
@@ -178,6 +227,8 @@ router.put('/:id', (req, res) => {
       const { data: savedItems, error: itemsErr } = await supabase.from('order_items').insert(itemRows).select();
       if (itemsErr) throw itemsErr;
 
+      await syncOrderStock(req.params.id, savedItems);
+
       order.order_items = savedItems;
       res.json(order);
     } catch (err) {
@@ -225,6 +276,13 @@ router.delete('/:id', async (req, res) => {
     .select('*, order_items(*)')
     .single();
   if (error) return res.status(500).json({ error: error.message });
+
+  // 丟到垃圾桶等於這張訂單不算數了，庫存要還回去。
+  try {
+    await clearOrderStockMovements(req.params.id);
+  } catch (err) {
+    return res.status(500).json({ error: '訂單已刪除，但庫存回補失敗：' + err.message });
+  }
   res.json(data);
 });
 
@@ -237,6 +295,13 @@ router.post('/:id/restore', async (req, res) => {
     .select('*, order_items(*)')
     .single();
   if (error) return res.status(500).json({ error: error.message });
+
+  // 還原回來就要重新扣掉（軟刪除時 order_items 沒有被刪，直接照它重算）。
+  try {
+    await syncOrderStock(req.params.id, data.order_items || []);
+  } catch (err) {
+    return res.status(500).json({ error: '訂單已還原，但庫存重新扣帳失敗：' + err.message });
+  }
   res.json(data);
 });
 

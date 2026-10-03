@@ -86,6 +86,23 @@
     display: flex; align-items: center; justify-content: center; font-family: var(--font-mono);
     border: 1px solid var(--line-strong);
   }
+  /* 庫存 badge：只有「有在追蹤庫存」的商品才會出現 */
+  .gallery-card .gc-stock {
+    position: absolute; top: 4px; right: 4px;
+    font-size: 9.5px; font-weight: 700; border-radius: 999px; height: 16px; padding: 0 5px;
+    display: flex; align-items: center; justify-content: center; font-family: var(--font-mono);
+    background: var(--good-soft); color: var(--good); border: 1px solid var(--good);
+  }
+  .gallery-card .gc-stock.low { background: var(--warn-soft); color: var(--warn); border-color: var(--warn); }
+  .gallery-card .gc-stock.out { background: var(--bad-soft); color: var(--bad); border-color: var(--bad); }
+
+  .sp-stock { font-size: 11.5px; font-weight: 700; margin-left: 6px; }
+  .sp-stock.ok { color: var(--good); }
+  .sp-stock.low { color: var(--warn); }
+  .sp-stock.out { color: var(--bad); }
+
+  .cart-row.over-stock { border-color: var(--bad); background: var(--bad-soft); }
+  .cr-stock-warn { font-size: 11.5px; color: var(--bad); font-weight: 600; }
 
   .size-picker {
     margin-top: 10px; padding: 12px; border-radius: var(--radius-sm); background: var(--accent-soft);
@@ -301,6 +318,7 @@
     <div class="tabs">
       <a href="/pricing.html">定價計算機</a>
       <a href="/records.html" class="active">銷售紀錄</a>
+      <a href="/stock.html">庫存管理</a>
     </div>
     <div class="right">
       <a class="btn small" href="/api/export/excel">⬇ 匯出Excel備份</a>
@@ -470,6 +488,7 @@
   var $ = function (id) { return document.getElementById(id); };
   var allOrders = [];
   var allProducts = [];
+  var stockById = {};   // priced_items.id -> { stock, low }，只有開啟追蹤的商品才會在裡面
   var cart = [];
   var selectedOrderIds = new Set();
   var ORDER_STATUSES = ['待處理', '已下貨', '已出貨', '已完成'];
@@ -522,6 +541,7 @@
           allOrders.unshift(restored);
           renderAll();
           loadTrash();
+          loadStock();   // 還原訂單會重新扣庫存
           showToast('已還原');
         } catch (e) { showToast('還原失敗，請再試一次'); }
       });
@@ -594,6 +614,29 @@
     return parts.join('・');
   }
 
+  /* ---------- 庫存顯示 ---------- */
+  /* 回傳 null 代表這個商品沒有在追蹤庫存，畫面上就什麼都不顯示。 */
+  function stockOf(productId) {
+    var s = stockById[productId];
+    return s ? s.stock : null;
+  }
+
+  function stockState(n, low) {
+    if (n <= 0) return 'out';
+    if (low) return 'low';
+    return 'ok';
+  }
+
+  /* 一張卡片可能有好幾個規格，卡片上顯示的是全部規格加起來還剩幾個。 */
+  function groupStock(variants) {
+    var tracked = variants.filter(function (v) { return stockById[v.id]; });
+    if (tracked.length === 0) return null;
+    return {
+      total: tracked.reduce(function (s, v) { return s + stockById[v.id].stock; }, 0),
+      anyLow: tracked.some(function (v) { return stockById[v.id].low; })
+    };
+  }
+
   function groupOptions(group) {
     var options = [];
     group.variants.forEach(function (p) {
@@ -631,8 +674,15 @@
 
     var card = document.createElement('div');
     card.className = 'gallery-card';
+    var gs = groupStock(group.variants);
+    var stockBadge = gs
+      ? '<div class="gc-stock ' + stockState(gs.total, gs.anyLow) + '">' +
+          (gs.total <= 0 ? '售完' : '剩' + gs.total) + '</div>'
+      : '';
+
     card.innerHTML =
       (itemNo != null ? '<div class="gc-itemno">' + itemNo + '</div>' : '') +
+      stockBadge +
       (thumbUrl ? '<img src="' + escapeHtml(thumbUrl) + '" alt="">' : '<div class="gc-placeholder">🖼️</div>') +
       '<div class="gc-name">' + escapeHtml(group.name) + '</div>' +
       '<div class="gc-price">' + priceLabel + '</div>' +
@@ -735,6 +785,13 @@
       selectBtn.type = 'button';
       selectBtn.className = 'sp-option-select';
       selectBtn.textContent = pickerOptionLabel(opt.size, opt.product.color, opt.product.spec1_name) + ' · NT$' + fmt(opt.product.final_price);
+      var optStock = stockOf(opt.product.id);
+      if (optStock !== null) {
+        var tag = document.createElement('span');
+        tag.className = 'sp-stock ' + stockState(optStock, stockById[opt.product.id].low);
+        tag.textContent = optStock <= 0 ? '· 已售完' : '· 剩 ' + optStock;
+        selectBtn.appendChild(tag);
+      }
       selectBtn.addEventListener('click', function () {
         addProductToCart(opt.product, opt.size);
         closeSizePicker();
@@ -816,7 +873,9 @@
         var match = findOption(size, picker2dSelectedColor);
         if (match) {
           btn.disabled = false;
-          btn.querySelector('.sp-size-price').textContent = 'NT$' + fmt(match.product.final_price);
+          var ms = stockOf(match.product.id);
+          btn.querySelector('.sp-size-price').textContent = 'NT$' + fmt(match.product.final_price) +
+            (ms === null ? '' : (ms <= 0 ? '・已售完' : '・剩' + ms));
         } else {
           btn.disabled = true;
           btn.querySelector('.sp-size-price').textContent = '無此組合';
@@ -1072,11 +1131,16 @@
       el.innerHTML = '<p class="empty-state">還沒有加入任何商品。</p>';
     } else {
       cart.forEach(function (item, idx) {
+        // 庫存不夠還是可以照樣下單（代購本來就能預購），只是把話講清楚。
+        var avail = item.productId ? stockOf(item.productId) : null;
+        var over = avail !== null && item.qty > avail;
+
         var row = document.createElement('div');
-        row.className = 'cart-row';
+        row.className = 'cart-row' + (over ? ' over-stock' : '');
         row.innerHTML =
           (item.photoUrl ? '<img src="' + escapeHtml(item.photoUrl) + '" alt="">' : '') +
-          '<div class="cr-name">' + escapeHtml(item.itemName) + (item.size ? ' <span class="cr-size">(' + escapeHtml(item.size) + ')</span>' : '') + '</div>' +
+          '<div class="cr-name">' + escapeHtml(item.itemName) + (item.size ? ' <span class="cr-size">(' + escapeHtml(item.size) + ')</span>' : '') +
+            (over ? '<div class="cr-stock-warn">⚠️ 庫存只剩 ' + avail + ' 個，這樣會變成缺 ' + (item.qty - avail) + ' 個</div>' : '') + '</div>' +
           '<span class="cr-qty-label">數量</span>' +
           '<input type="number" class="cr-qty" min="1" step="1" value="' + item.qty + '" data-idx="' + idx + '">' +
           '<div class="cr-nums">NT$' + fmt(item.cost * item.qty) + ' → NT$' + fmt(item.soldPrice * item.qty) + '</div>' +
@@ -1123,6 +1187,22 @@
     allProducts = products;
     renderGallery();
   }).catch(function () { /* 商品清單抓不到就只能手動新增，不擋主流程 */ });
+
+  /* 庫存是另外抓的，抓不到就當作沒有人在管庫存，畫面照常運作不擋下單。 */
+  function loadStock() {
+    return fetch('/api/stock').then(function (res) {
+      if (!res.ok) throw new Error();
+      return res.json();
+    }).then(function (data) {
+      stockById = {};
+      data.items.forEach(function (it) {
+        if (it.track_stock) stockById[it.id] = { stock: it.stock, low: it.low_stock };
+      });
+      renderGallery();
+      renderCart();
+    }).catch(function () { /* 沒庫存資料就不顯示庫存，不影響下單 */ });
+  }
+  loadStock();
 
   /* ---------- Order-level photo ---------- */
 
@@ -1444,6 +1524,7 @@
           renderAll();
           updateBulkBar();
           loadTrash();
+          loadStock();   // 刪到垃圾桶會把庫存還回去
           showToast('已刪除，可在下方「最近刪除的訂單」還原');
         } catch (e) { showToast('刪除失敗，請再試一次'); }
       });
@@ -1592,9 +1673,11 @@
     cart = [];
     (o.order_items || []).forEach(function (it) {
       var itemName = it.item_name, size = it.size || '', cost = Number(it.cost) || 0, soldPrice = Number(it.sold_price) || 0;
-      var existing = findCartEntry(null, itemName, size, cost, soldPrice);
+      // priced_item_id 要帶回來，不然編輯完存回去會變成手動商品、庫存就不扣了。
+      var productId = it.priced_item_id || null;
+      var existing = findCartEntry(productId, itemName, size, cost, soldPrice);
       if (existing) { existing.qty += 1; }
-      else { cart.push({ productId: null, itemName: itemName, size: size, photoUrl: it.photo_url || null, cost: cost, soldPrice: soldPrice, qty: 1 }); }
+      else { cart.push({ productId: productId, itemName: itemName, size: size, photoUrl: it.photo_url || null, cost: cost, soldPrice: soldPrice, qty: 1 }); }
     });
     renderCart();
     renderGallery();
@@ -1674,7 +1757,7 @@
     var expandedItems = [];
     cart.forEach(function (it) {
       for (var n = 0; n < it.qty; n++) {
-        expandedItems.push({ itemName: it.itemName, size: it.size, photoUrl: it.photoUrl, cost: it.cost, soldPrice: it.soldPrice });
+        expandedItems.push({ itemName: it.itemName, size: it.size, photoUrl: it.photoUrl, cost: it.cost, soldPrice: it.soldPrice, productId: it.productId || null });
       }
     });
     fd.append('items', JSON.stringify(expandedItems));
@@ -1707,6 +1790,7 @@
       }
       resetForm();
       renderAll();
+      loadStock();   // 訂單會自動扣庫存，重新抓一次讓畫面上的剩餘數量跟著更新
     } catch (err) {
       errEl.textContent = err.message || (isEditing ? '更新失敗，請再試一次。' : '新增失敗，請再試一次。');
       errEl.classList.add('show');

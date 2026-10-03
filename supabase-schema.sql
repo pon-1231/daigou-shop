@@ -126,6 +126,31 @@ create table if not exists order_history (
 
 create index if not exists order_history_order_id_idx on order_history(order_id);
 
+-- 4c. 庫存系統
+--     「目前庫存」不存成一個欄位，而是 stock_movements 這張流水帳的 delta 加總，
+--     這樣永遠不會出現「欄位數字跟實際進出貨紀錄對不上」的狀況，也看得出來為什麼只剩這麼多。
+
+-- 商品層：要不要追蹤庫存（預設關，商品很多時不用一次全開）、低庫存門檻（null = 用全站預設 5）
+alter table priced_items add column if not exists track_stock boolean not null default false;
+alter table priced_items add column if not exists low_stock_threshold integer;
+
+-- 訂單商品連回商品，訂單才有辦法自動扣對應商品的庫存
+alter table order_items add column if not exists priced_item_id uuid references priced_items(id) on delete set null;
+create index if not exists order_items_priced_item_id_idx on order_items(priced_item_id);
+
+create table if not exists stock_movements (
+  id uuid primary key default gen_random_uuid(),
+  priced_item_id uuid not null references priced_items(id) on delete cascade,
+  delta integer not null,                   -- 正數進貨、負數賣出
+  reason text not null default '手動調整',   -- 進貨 / 訂單 / 手動調整
+  order_id uuid references orders(id) on delete cascade,
+  note text not null default '',
+  created_at timestamptz not null default now()
+);
+
+create index if not exists stock_movements_item_idx on stock_movements(priced_item_id);
+create index if not exists stock_movements_order_idx on stock_movements(order_id);
+
 -- 5. 把舊的 sales_records 資料搬進新的 orders / order_items（只需執行一次）
 --    如果這是全新安裝、sales_records 是空的，這段執行了也不會出錯，會直接跳過。
 insert into orders (id, customer_name, order_status, ship_by, shipping_fee, note, photo_url, sold_at, created_at)

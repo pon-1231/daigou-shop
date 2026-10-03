@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>庫存管理｜代購賣場工具</title>
+<link rel="stylesheet" href="/shared.css">
+<style>
+  /* ---------- 低庫存警示（永遠在最上方） ---------- */
+  .alert-panel {
+    border: 1px solid var(--bad);
+    background: var(--bad-soft);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    margin-bottom: 22px;
+  }
+  .alert-panel h2 { color: var(--bad); margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
+  .alert-list { display: flex; flex-direction: column; gap: 8px; }
+  .alert-row {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    background: var(--bg-elevated);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    padding: 9px 12px;
+  }
+  .alert-row .ar-name { font-weight: 600; font-size: 14px; }
+  .alert-row .ar-spec { font-size: 12.5px; color: var(--ink-soft); }
+  .alert-row .ar-left { margin-left: auto; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 700; color: var(--bad); white-space: nowrap; }
+  .ok-panel {
+    border: 1px solid var(--good);
+    background: var(--good-soft);
+    color: var(--good);
+    border-radius: var(--radius);
+    padding: 14px 20px;
+    margin-bottom: 22px;
+    font-size: 14px; font-weight: 600;
+  }
+
+  /* ---------- 工具列 ---------- */
+  .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 18px; }
+  .toolbar input[type="text"] { flex: 1 1 220px; width: auto; }
+  .toolbar label.inline { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-weight: 500; font-size: 13.5px; white-space: nowrap; }
+  .toolbar label.inline input { width: auto; }
+
+  /* ---------- 庫存列表 ---------- */
+  .stock-group { margin-bottom: 14px; }
+  .stock-group > summary {
+    cursor: pointer; font-weight: 600; font-size: 14px;
+    padding: 8px 4px; list-style: revert;
+  }
+  .stock-list { display: flex; flex-direction: column; gap: 8px; padding: 4px 0 10px; }
+  .stock-row {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    background: var(--bg-elevated);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+  }
+  .stock-row.is-low { border-color: var(--bad); background: var(--bad-soft); }
+  .sr-no {
+    font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+    font-size: 12px; font-weight: 700; color: var(--ink-soft);
+    min-width: 28px; text-align: right;
+  }
+  .sr-thumb { width: 38px; height: 38px; border-radius: 8px; object-fit: cover; border: 1px solid var(--line); flex: none; }
+  .sr-thumb-ph {
+    width: 38px; height: 38px; border-radius: 8px; border: 1px solid var(--line);
+    display: flex; align-items: center; justify-content: center; font-size: 16px; flex: none;
+  }
+  .sr-main { flex: 1 1 200px; min-width: 0; }
+  .sr-name { font-weight: 600; font-size: 14px; }
+  .sr-spec { font-size: 12.5px; color: var(--ink-soft); }
+  .sr-stock {
+    font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+    font-size: 20px; font-weight: 700; min-width: 56px; text-align: right;
+    background: none; border: none; cursor: pointer; color: var(--ink); padding: 0;
+  }
+  .sr-stock.low { color: var(--bad); }
+  .sr-stock.zero { color: var(--bad); }
+  .sr-stock.ok { color: var(--good); }
+  .sr-unit { font-size: 12px; color: var(--ink-soft); margin-left: 2px; }
+  .sr-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .sr-threshold { width: 62px !important; text-align: center; font-family: var(--font-mono); padding: 5px 6px !important; font-size: 12.5px !important; }
+  .sr-threshold-wrap { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--ink-soft); white-space: nowrap; }
+
+  /* ---------- 流水帳 ---------- */
+  .mv-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+  .mv-row {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    font-size: 13px; padding: 8px 12px;
+    border: 1px solid var(--line); border-radius: var(--radius-sm);
+    background: var(--bg);
+  }
+  .mv-delta { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 700; min-width: 46px; text-align: right; }
+  .mv-delta.plus { color: var(--good); }
+  .mv-delta.minus { color: var(--bad); }
+  .mv-when { color: var(--ink-soft); font-size: 12px; margin-left: auto; white-space: nowrap; }
+  .mv-note { color: var(--ink-soft); font-size: 12.5px; }
+
+  /* ---------- 對話框 ---------- */
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.42);
+    display: none; align-items: center; justify-content: center; z-index: 50; padding: 20px;
+  }
+  .modal-backdrop.show { display: flex; }
+  .modal {
+    background: var(--bg-elevated); border-radius: var(--radius); box-shadow: var(--shadow);
+    padding: 22px 24px; width: 100%; max-width: 460px; max-height: 84vh; overflow: auto;
+  }
+  .modal h2 { margin-bottom: 6px; }
+  .modal .modal-sub { font-size: 13px; color: var(--ink-soft); margin: 0 0 16px; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; flex-wrap: wrap; }
+  .seg { display: flex; gap: 6px; margin-bottom: 14px; }
+  .seg button {
+    flex: 1; padding: 8px 10px; font-size: 13.5px; font-weight: 600; cursor: pointer;
+    background: var(--bg); color: var(--ink-soft);
+    border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+  }
+  .seg button.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+  .err { color: var(--bad); font-size: 13px; margin-top: 10px; display: none; }
+  .err.show { display: block; }
+</style>
+</head>
+<body>
+<div class="page">
+  <nav class="topnav">
+    <div class="brand">📦 NAN｜推し研究所 代購賣場工具</div>
+    <div class="tabs">
+      <a href="/pricing.html">定價計算機</a>
+      <a href="/records.html">銷售紀錄</a>
+      <a href="/stock.html" class="active">庫存管理</a>
+    </div>
+    <div class="right">
+      <a class="btn small" href="/api/export/excel">⬇ 匯出Excel備份</a>
+      <form method="POST" action="/logout" style="margin:0;">
+        <button type="submit" class="btn small">登出</button>
+      </form>
+    </div>
+  </nav>
+
+  <h1>庫存管理</h1>
+  <p class="sub">只有「開始追蹤」的商品才會管庫存，所以不用一次把所有商品都填進來，手上真的有囤貨的再打開就好。進貨按「+進貨」，賣出時建立訂單會自動扣，訂單刪掉也會自動補回來。</p>
+
+  <!-- 庫存不足警示，永遠在最上方 -->
+  <div id="alertArea"></div>
+
+  <div class="stat-row">
+    <div class="stat-tile"><div class="st-label">追蹤中商品</div><div class="st-value" id="statTracked">—</div></div>
+    <div class="stat-tile"><div class="st-label">庫存不足</div><div class="st-value" id="statLow">—</div></div>
+    <div class="stat-tile"><div class="st-label">庫存總件數</div><div class="st-value" id="statTotal">—</div></div>
+  </div>
+
+  <div class="panel panel-pad">
+    <h2>追蹤中的庫存</h2>
+    <div class="toolbar">
+      <input type="text" id="search" placeholder="搜尋商品名稱或規格…">
+      <label class="inline"><input type="checkbox" id="onlyLow"> 只看庫存不足</label>
+      <button type="button" class="btn small" id="reloadBtn">重新整理</button>
+    </div>
+    <div id="trackedList"><p class="empty-state">載入中…</p></div>
+  </div>
+
+  <details class="panel panel-pad" id="untrackedPanel" style="margin-top:20px;">
+    <summary style="cursor:pointer; font-family: var(--font-display); font-size:18px; font-weight:600;">
+      還沒追蹤庫存的商品（<span id="untrackedCount">0</span>）
+    </summary>
+    <p class="sub" style="margin-top:14px;">這些商品目前不管庫存，建立訂單時也不會顯示剩餘數量。按「開始追蹤」之後就會出現在上面的清單裡。</p>
+    <div class="toolbar">
+      <input type="text" id="searchUntracked" placeholder="搜尋商品名稱或規格…">
+    </div>
+    <div id="untrackedList"></div>
+  </details>
+</div>
+
+<!-- 進貨 / 調整 -->
+<div class="modal-backdrop" id="moveModal">
+  <div class="modal">
+    <h2 id="moveTitle">進貨</h2>
+    <p class="modal-sub" id="moveSub"></p>
+    <div class="seg">
+      <button type="button" data-mode="in" class="active">進貨（+）</button>
+      <button type="button" data-mode="out">減少（−）</button>
+      <button type="button" data-mode="set">設定為</button>
+    </div>
+    <div class="field">
+      <label id="moveQtyLabel">數量</label>
+      <input type="number" id="moveQty" min="0" step="1" value="1">
+      <div class="hint" id="moveHint"></div>
+    </div>
+    <div class="field">
+      <label>備註（選填）</label>
+      <input type="text" id="moveNote" placeholder="例如：9/20 跟廠商補貨">
+    </div>
+    <p class="err" id="moveErr"></p>
+    <div class="modal-actions">
+      <button type="button" class="btn" id="moveCancel">取消</button>
+      <button type="button" class="btn primary" id="moveConfirm">確定</button>
+    </div>
+  </div>
+</div>
+
+<!-- 流水帳 -->
+<div class="modal-backdrop" id="histModal">
+  <div class="modal">
+    <h2>庫存紀錄</h2>
+    <p class="modal-sub" id="histSub"></p>
+    <div class="mv-list" id="histList"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn" id="histClose">關閉</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  function $(id) { return document.getElementById(id); }
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function toast(msg) {
+    var el = $('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(el._t);
+    el._t = setTimeout(function () { el.classList.remove('show'); }, 2200);
+  }
+
+  var allItems = [];
+  var defaultThreshold = 5;
+
+  /* 規格標籤：優先用自訂規格名稱，舊資料才 fallback 回 color/sizes。 */
+  function specLabel(it) {
+    var parts = [];
+    if (it.spec1_value) parts.push((it.spec1_name ? it.spec1_name + '：' : '') + it.spec1_value);
+    else if (it.color) parts.push('🎨' + it.color);
+    if (it.spec2_value) parts.push((it.spec2_name ? it.spec2_name + '：' : '') + it.spec2_value);
+    else if (it.sizes) parts.push(it.sizes);
+    return parts.join('　');
+  }
+
+  function searchText(it) {
+    return ((it.name || '') + ' ' + specLabel(it)).toLowerCase();
+  }
+
+  /* 商品有好幾百筆，縮圖一定要 lazy load，不然展開清單會一次抓幾百張圖把畫面卡住。 */
+  function thumbHtml(it) {
+    return it.photo_url
+      ? '<img class="sr-thumb" loading="lazy" decoding="async" src="' + escapeHtml(it.photo_url) + '" alt="">'
+      : '<div class="sr-thumb-ph">🖼️</div>';
+  }
+
+  function groupBySortGroup(items) {
+    var groups = {};
+    var order = [];
+    items.forEach(function (it) {
+      var g = (it.sort_group || '').trim() || '未分類';
+      if (!groups[g]) { groups[g] = []; order.push(g); }
+      groups[g].push(it);
+    });
+    order.sort(function (a, b) {
+      if (a === '未分類') return 1;
+      if (b === '未分類') return -1;
+      return a.localeCompare(b, 'zh-Hant');
+    });
+    return order.map(function (g) {
+      groups[g].sort(function (a, b) {
+        var an = a.item_no != null ? a.item_no : Infinity;
+        var bn = b.item_no != null ? b.item_no : Infinity;
+        if (an !== bn) return an - bn;
+        return (a.name || '').localeCompare(b.name || '', 'zh-Hant');
+      });
+      return { group: g, items: groups[g] };
+    });
+  }
+
+  /* ---------- 最上方的庫存不足警示 ---------- */
+  function renderAlert() {
+    var low = allItems.filter(function (it) { return it.low_stock; });
+    var el = $('alertArea');
+
+    if (!allItems.some(function (it) { return it.track_stock; })) {
+      el.innerHTML = '';
+      return;
+    }
+    if (low.length === 0) {
+      el.innerHTML = '<div class="ok-panel">✅ 庫存都還夠，目前沒有低於門檻的商品。</div>';
+      return;
+    }
+
+    low.sort(function (a, b) { return a.stock - b.stock; });
+    el.innerHTML =
+      '<div class="alert-panel">' +
+        '<h2>⚠️ 有 ' + low.length + ' 項商品庫存不足</h2>' +
+        '<div class="alert-list">' +
+          low.map(function (it) {
+            var spec = specLabel(it);
+            return '<div class="alert-row">' +
+              (it.item_no != null ? '<span class="sr-no">' + it.item_no + '</span>' : '') +
+              '<span class="ar-name">' + escapeHtml(it.name || '未命名商品') + '</span>' +
+              (spec ? '<span class="ar-spec">' + escapeHtml(spec) + '</span>' : '') +
+              '<span class="ar-left">' + (it.stock <= 0 ? '已售完' : '只剩 ' + it.stock + ' 個') +
+                '<span class="sr-unit">（門檻 ' + it.threshold + '）</span></span>' +
+              '<button type="button" class="btn small primary" data-restock="' + it.id + '">+進貨</button>' +
+            '</div>';
+          }).join('') +
+        '</div>' +
+      '</div>';
+  }
+
+  function renderStats() {
+    var tracked = allItems.filter(function (it) { return it.track_stock; });
+    var total = tracked.reduce(function (s, it) { return s + (it.stock || 0); }, 0);
+    $('statTracked').textContent = tracked.length;
+    $('statLow').textContent = tracked.filter(function (it) { return it.low_stock; }).length;
+    $('statTotal').textContent = total;
+  }
+
+  function stockClass(it) {
+    if (it.stock <= 0) return 'zero';
+    if (it.low_stock) return 'low';
+    return 'ok';
+  }
+
+  function trackedRowHtml(it) {
+    var spec = specLabel(it);
+    return '<div class="stock-row' + (it.low_stock ? ' is-low' : '') + '">' +
+      '<span class="sr-no">' + (it.item_no != null ? it.item_no : '') + '</span>' +
+      thumbHtml(it) +
+      '<div class="sr-main">' +
+        '<div class="sr-name">' + escapeHtml(it.name || '未命名商品') + '</div>' +
+        (spec ? '<div class="sr-spec">' + escapeHtml(spec) + '</div>' : '') +
+      '</div>' +
+      '<button type="button" class="sr-stock ' + stockClass(it) + '" data-hist="' + it.id + '" title="看庫存紀錄">' +
+        it.stock + '<span class="sr-unit">個</span></button>' +
+      '<div class="sr-threshold-wrap">門檻' +
+        '<input type="number" class="sr-threshold" min="0" step="1" data-threshold="' + it.id + '" ' +
+          'value="' + (it.low_stock_threshold == null ? '' : it.low_stock_threshold) + '" ' +
+          'placeholder="' + defaultThreshold + '">' +
+      '</div>' +
+      '<div class="sr-actions">' +
+        '<button type="button" class="btn small primary" data-restock="' + it.id + '">+進貨</button>' +
+        '<button type="button" class="btn small" data-adjust="' + it.id + '">調整</button>' +
+        '<button type="button" class="btn small" data-untrack="' + it.id + '">停止追蹤</button>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function untrackedRowHtml(it) {
+    var spec = specLabel(it);
+    return '<div class="stock-row">' +
+      '<span class="sr-no">' + (it.item_no != null ? it.item_no : '') + '</span>' +
+      thumbHtml(it) +
+      '<div class="sr-main">' +
+        '<div class="sr-name">' + escapeHtml(it.name || '未命名商品') + '</div>' +
+        (spec ? '<div class="sr-spec">' + escapeHtml(spec) + '</div>' : '') +
+      '</div>' +
+      '<div class="sr-actions">' +
+        '<button type="button" class="btn small primary" data-track="' + it.id + '">開始追蹤</button>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function renderGroupedInto(el, items, rowHtml, emptyMsg) {
+    if (items.length === 0) {
+      el.innerHTML = '<p class="empty-state">' + emptyMsg + '</p>';
+      return;
+    }
+    var groups = groupBySortGroup(items);
+    if (groups.length === 1) {
+      el.innerHTML = '<div class="stock-list">' + groups[0].items.map(rowHtml).join('') + '</div>';
+      return;
+    }
+    el.innerHTML = groups.map(function (g) {
+      return '<details class="stock-group" open>' +
+        '<summary>' + escapeHtml(g.group) + '（' + g.items.length + '）</summary>' +
+        '<div class="stock-list">' + g.items.map(rowHtml).join('') + '</div>' +
+      '</details>';
+    }).join('');
+  }
+
+  function renderTracked() {
+    var term = ($('search').value || '').trim().toLowerCase();
+    var items = allItems.filter(function (it) { return it.track_stock; });
+    if ($('onlyLow').checked) items = items.filter(function (it) { return it.low_stock; });
+    if (term) items = items.filter(function (it) { return searchText(it).indexOf(term) !== -1; });
+
+    var empty = allItems.some(function (it) { return it.track_stock; })
+      ? '沒有符合條件的商品。'
+      : '還沒有任何商品在追蹤庫存。到下面「還沒追蹤庫存的商品」選要管的商品，按「開始追蹤」。';
+    renderGroupedInto($('trackedList'), items, trackedRowHtml, empty);
+  }
+
+  function renderUntracked() {
+    var term = ($('searchUntracked').value || '').trim().toLowerCase();
+    var all = allItems.filter(function (it) { return !it.track_stock; });
+    $('untrackedCount').textContent = all.length;
+    var items = term ? all.filter(function (it) { return searchText(it).indexOf(term) !== -1; }) : all;
+    renderGroupedInto($('untrackedList'), items, untrackedRowHtml, '沒有符合條件的商品。');
+  }
+
+  function renderAll() {
+    renderAlert();
+    renderStats();
+    renderTracked();
+    renderUntracked();
+  }
+
+  async function load() {
+    try {
+      var res = await fetch('/api/stock');
+      if (!res.ok) throw new Error((await res.json()).error || '讀取失敗');
+      var data = await res.json();
+      defaultThreshold = data.defaultThreshold;
+      allItems = data.items;
+      renderAll();
+    } catch (err) {
+      $('trackedList').innerHTML = '<p class="empty-state">讀取庫存失敗：' + escapeHtml(err.message) + '</p>';
+    }
+  }
+
+  function itemById(id) {
+    return allItems.filter(function (it) { return it.id === id; })[0];
+  }
+
+  /* ---------- 進貨 / 調整對話框 ---------- */
+  var moveItemId = null;
+  var moveMode = 'in';
+
+  function setMoveMode(mode) {
+    moveMode = mode;
+    Array.prototype.forEach.call($('moveModal').querySelectorAll('.seg button'), function (b) {
+      b.classList.toggle('active', b.dataset.mode === mode);
+    });
+    var it = itemById(moveItemId) || {};
+    var cur = it.track_stock ? (it.stock || 0) : 0;
+    if (mode === 'in') {
+      $('moveQtyLabel').textContent = '進貨數量';
+      $('moveHint').textContent = '目前 ' + cur + ' 個，進貨後會變成 ' + cur + ' + 你填的數量。';
+    } else if (mode === 'out') {
+      $('moveQtyLabel').textContent = '要減少的數量';
+      $('moveHint').textContent = '用在送人、報廢、盤點少了這種情況。賣出不用手動減，建立訂單會自動扣。';
+    } else {
+      $('moveQtyLabel').textContent = '實際盤點數量';
+      $('moveHint').textContent = '直接填你現在手上實際有幾個（目前紀錄是 ' + cur + ' 個），系統會自動補上差額。';
+    }
+  }
+
+  function openMove(id, mode) {
+    var it = itemById(id);
+    if (!it) return;
+    moveItemId = id;
+    var spec = specLabel(it);
+    $('moveTitle').textContent = mode === 'in' ? '進貨' : '調整庫存';
+    $('moveSub').textContent = (it.name || '未命名商品') + (spec ? '　' + spec : '');
+    $('moveQty').value = mode === 'set' ? (it.stock || 0) : 1;
+    $('moveNote').value = '';
+    $('moveErr').classList.remove('show');
+    setMoveMode(mode);
+    $('moveModal').classList.add('show');
+    $('moveQty').focus();
+    $('moveQty').select();
+  }
+
+  function closeMove() { $('moveModal').classList.remove('show'); moveItemId = null; }
+
+  Array.prototype.forEach.call($('moveModal').querySelectorAll('.seg button'), function (b) {
+    b.addEventListener('click', function () { setMoveMode(b.dataset.mode); });
+  });
+  $('moveCancel').addEventListener('click', closeMove);
+  $('moveModal').addEventListener('click', function (e) { if (e.target === $('moveModal')) closeMove(); });
+
+  $('moveConfirm').addEventListener('click', async function () {
+    var it = itemById(moveItemId);
+    if (!it) return;
+    var qty = Math.round(Number($('moveQty').value));
+    var errEl = $('moveErr');
+    if (!Number.isFinite(qty) || qty < 0) {
+      errEl.textContent = '請填 0 以上的整數。';
+      errEl.classList.add('show');
+      return;
+    }
+
+    var delta;
+    if (moveMode === 'in') delta = qty;
+    else if (moveMode === 'out') delta = -qty;
+    else delta = qty - (it.track_stock ? (it.stock || 0) : 0);
+
+    if (delta === 0) {
+      errEl.textContent = moveMode === 'set' ? '填的數量跟目前一樣，不用調整。' : '數量不能是 0。';
+      errEl.classList.add('show');
+      return;
+    }
+
+    var btn = $('moveConfirm');
+    btn.disabled = true;
+    try {
+      var res = await fetch('/api/stock/' + moveItemId + '/movements', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          delta: delta,
+          reason: moveMode === 'in' ? '進貨' : '手動調整',
+          note: $('moveNote').value.trim()
+        })
+      });
+      if (!res.ok) throw new Error((await res.json()).error || '儲存失敗');
+      closeMove();
+      await load();
+      toast(delta > 0 ? '已進貨 +' + delta : '已調整 ' + delta);
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.classList.add('show');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  /* ---------- 流水帳 ---------- */
+  function fmtWhen(iso) {
+    var d = new Date(iso);
+    var p = function (n) { return n < 10 ? '0' + n : '' + n; };
+    return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+
+  async function openHistory(id) {
+    var it = itemById(id);
+    if (!it) return;
+    var spec = specLabel(it);
+    $('histSub').textContent = (it.name || '未命名商品') + (spec ? '　' + spec : '') + '　目前 ' + it.stock + ' 個';
+    $('histList').innerHTML = '<p class="empty-state">載入中…</p>';
+    $('histModal').classList.add('show');
+    try {
+      var res = await fetch('/api/stock/' + id + '/movements');
+      if (!res.ok) throw new Error((await res.json()).error || '讀取失敗');
+      var rows = await res.json();
+      if (rows.length === 0) {
+        $('histList').innerHTML = '<p class="empty-state">還沒有任何庫存異動。</p>';
+        return;
+      }
+      $('histList').innerHTML = rows.map(function (m) {
+        var who = m.orders && m.orders.customer_name ? '（' + escapeHtml(m.orders.customer_name) + '）' : '';
+        return '<div class="mv-row">' +
+          '<span class="mv-delta ' + (m.delta > 0 ? 'plus' : 'minus') + '">' + (m.delta > 0 ? '+' : '') + m.delta + '</span>' +
+          '<span>' + escapeHtml(m.reason) + who + '</span>' +
+          (m.note ? '<span class="mv-note">' + escapeHtml(m.note) + '</span>' : '') +
+          '<span class="mv-when">' + fmtWhen(m.created_at) + '</span>' +
+        '</div>';
+      }).join('');
+    } catch (err) {
+      $('histList').innerHTML = '<p class="empty-state">讀取失敗：' + escapeHtml(err.message) + '</p>';
+    }
+  }
+
+  $('histClose').addEventListener('click', function () { $('histModal').classList.remove('show'); });
+  $('histModal').addEventListener('click', function (e) { if (e.target === $('histModal')) $('histModal').classList.remove('show'); });
+
+  /* ---------- 設定（追蹤開關 / 門檻） ---------- */
+  async function patchSettings(id, payload, okMsg) {
+    try {
+      var res = await fetch('/api/stock/' + id + '/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error((await res.json()).error || '儲存失敗');
+      await load();
+      if (okMsg) toast(okMsg);
+    } catch (err) {
+      toast('失敗：' + err.message);
+    }
+  }
+
+  /* 列表是每次重畫的，所以事件用委派綁在容器上。 */
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest ? e.target.closest('button') : null;
+    if (!t) return;
+    if (t.dataset.restock) return openMove(t.dataset.restock, 'in');
+    if (t.dataset.adjust) return openMove(t.dataset.adjust, 'set');
+    if (t.dataset.hist) return openHistory(t.dataset.hist);
+    if (t.dataset.track) return patchSettings(t.dataset.track, { trackStock: true }, '已開始追蹤庫存');
+    if (t.dataset.untrack) {
+      var it = itemById(t.dataset.untrack);
+      var msg = it && it.stock
+        ? '停止追蹤「' + (it.name || '') + '」？目前記錄的 ' + it.stock + ' 個庫存紀錄會留著，之後重新追蹤還看得到。'
+        : '停止追蹤這個商品的庫存？';
+      if (!confirm(msg)) return;
+      return patchSettings(t.dataset.untrack, { trackStock: false }, '已停止追蹤');
+    }
+  });
+
+  document.addEventListener('change', function (e) {
+    var el = e.target;
+    if (el.dataset && el.dataset.threshold) {
+      patchSettings(el.dataset.threshold, { lowStockThreshold: el.value }, '門檻已更新');
+    }
+  });
+
+  $('search').addEventListener('input', renderTracked);
+  $('onlyLow').addEventListener('change', renderTracked);
+  $('searchUntracked').addEventListener('input', renderUntracked);
+  $('reloadBtn').addEventListener('click', load);
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    closeMove();
+    $('histModal').classList.remove('show');
+  });
+
+  load();
+})();
+</script>
+</body>
+</html>
