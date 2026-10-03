@@ -41,23 +41,17 @@ stock_movements (新表)               -- delta / reason / order_id / note
 
 ---
 
-## 2. ⚠️ 最重要的待辦：Supabase 要搬家
+## 2. ✅ Supabase 搬家（2026-10-03 已完成）
 
-**線上的 Supabase 專案 `zokxrgmofiqbobtxycbs` 不屬於使用者的帳號。**
+舊專案 `zokxrgmofiqbobtxycbs`（不屬於使用者帳號，管不到）已經搬到使用者自己帳號（`ansonhsiao2002-8336's projects`）底下的新專案 **`buocrbnwoisidzlkqouu`**（region: ap-southeast-1）。
 
-2026-10-03 確認過：直接開 `https://supabase.com/dashboard/project/zokxrgmofiqbobtxycbs` 顯示沒有權限。使用者帳號（`ansonhsiao2002@gmail.com`，Email / Vercel Marketplace / ChatGPT / GitHub `pon-1231` 四種登入方式**全綁在同一個帳號**，所以換登入方式沒用）裡只看得到一個叫 `supabase-violet-queen`、已經暫停超過一年、連 dashboard 都救不回來的舊專案。
+**做完的事**：
+1. `supabase-schema.sql` 跑進新專案建表
+2. 資料整批搬完，筆數核對一致：`priced_items` 383、`orders` 18、`order_items` 154、`order_history` 12、`stock_movements` 4、`sales_records` 5；外鍵無孤兒紀錄
+3. Storage `sales-photos` bucket（public）另建 + 60 張圖全部搬過去，DB 裡 `photo_url` 的網域已批次改成新專案
+4. 本機 `.env` 與 Render 的 `SUPABASE_URL` / `SUPABASE_SERVICE_KEY` / `DATABASE_URL` 三個環境變數都已更新，Render 重新部署過，網站確認正常
 
-網站還能跑是因為伺服器用 service key 直打 API，不經過 dashboard。**「網站能用」跟「我的帳號能管理它」是兩件獨立的事** —— 之前 Render 那次也是同一個病。
-
-**風險**：免費方案閒置約一週會暫停，暫停滿一年永久救不回；被暫停時使用者**沒權限叫醒**；擁有者帳號刪掉它就只剩備份。
-
-**搬家做法**（我有舊專案 `postgres` 最高權限，幾乎全自動）：
-1. 使用者在自己帳號（`ansonhsiao2002-8336's projects`）建新 Supabase 專案，提供 URL + service key + Session pooler 連線字串
-2. 用 `pg` 直連把 `supabase-schema.sql` 跑進新專案，再整批搬資料
-3. **Storage 的 `sales-photos` bucket 要另外建 + 搬圖**。`photo_url` 存的是絕對網址，不搬圖的話舊連結會跟著舊專案一起死 —— 這步最容易漏
-4. 改本機 `.env` 和 Render 的 `SUPABASE_URL` / `SUPABASE_SERVICE_KEY` / `DATABASE_URL` 三個環境變數
-
-備份：`C:\Users\陳有朋\Desktop\daigou-shop-備份-2026-10-03\`（7 張表的 JSON，**不含 Storage 圖片**）。
+舊專案還是留著當備援（反正也刪不掉），備份 `C:\Users\陳有朋\Desktop\daigou-shop-備份-2026-10-03\`（7 張表 JSON，不含 Storage 圖片）也留著。**這件事不用重做。**
 
 ---
 
