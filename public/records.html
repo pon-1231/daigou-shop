@@ -1737,14 +1737,19 @@
   }
 
   /* 純前端比對 allOrders 裡同名客人的歷史訂單數，不用額外打 API。
-     名字用 trim + 轉小寫比對，跟系統「沒有客人 ID、只有自由輸入名字」的現況一致，
-     同一人打錯字 / 全半形不同會被當成新客人，這是已知的限制，不是 bug。 */
+     客人名稱常見格式是「帳號/追蹤碼」（追蹤碼每筆訂單都不同），所以只取 "/" 前面
+     的部分當作身分比對，trim + 轉小寫。同一人打錯字 / 全半形不同還是會被當成新客人，
+     這是已知的限制，不是 bug。 */
+  function customerKey(name) {
+    return (name || '').split('/')[0].trim().toLowerCase();
+  }
+
   function updateRepeatHint() {
     var el = $('repeatHint');
-    var name = $('customerName').value.trim().toLowerCase();
-    if (!name) { el.style.display = 'none'; return; }
+    var key = customerKey($('customerName').value);
+    if (!key) { el.style.display = 'none'; return; }
     var pastCount = allOrders.filter(function (o) {
-      return o.id !== editingId && (o.customer_name || '').trim().toLowerCase() === name;
+      return o.id !== editingId && customerKey(o.customer_name) === key;
     }).length;
     if (pastCount === 0) { el.style.display = 'none'; return; }
     el.textContent = '🔁 本次為回購第 ' + (pastCount + 1) + ' 次';
