@@ -178,6 +178,11 @@
     font-size: 12.5px; padding: 3px 2px; border: 1px solid var(--line-strong); border-radius: 6px; flex-shrink: 0;
   }
   .cart-row .cr-qty-label { font-size: 10.5px; color: var(--ink-soft); flex-shrink: 0; }
+  .cart-row .cr-gift {
+    background: none; border: 1px solid var(--line-strong); color: var(--ink-soft); cursor: pointer;
+    font-size: 11px; padding: 3px 7px; border-radius: 6px; flex-shrink: 0; white-space: nowrap;
+  }
+  .cart-row .cr-gift.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
 
   /* ---------- Status overview / breakdown ---------- */
   .status-overview, .product-breakdown { margin-bottom: 22px; }
@@ -373,7 +378,7 @@
         </p>
         <form id="orderForm">
           <div class="two-col">
-            <div class="field"><label>客人名稱<span class="required-mark">*</span></label><input type="text" id="customerName" placeholder="例如：阿美"></div>
+            <div class="field"><label>客人名稱<span class="required-mark">*</span></label><input type="text" id="customerName" placeholder="例如：阿美"><span class="hint" id="repeatHint" style="display:none;"></span></div>
             <div class="field"><label>日期<span class="required-mark">*</span></label><input type="date" id="soldAt"></div>
           </div>
           <div class="two-col">
@@ -1144,6 +1149,9 @@
           '<span class="cr-qty-label">數量</span>' +
           '<input type="number" class="cr-qty" min="1" step="1" value="' + item.qty + '" data-idx="' + idx + '">' +
           '<div class="cr-nums">NT$' + fmt(item.cost * item.qty) + ' → NT$' + fmt(item.soldPrice * item.qty) + '</div>' +
+          '<button type="button" class="cr-gift' + (item.soldPrice === 0 ? ' active' : '') + '" data-idx="' + idx + '">' +
+            (item.soldPrice === 0 ? '🎁 贈品中' : '🎁 設為贈品') +
+          '</button>' +
           '<button type="button" class="cr-remove" data-idx="' + idx + '">✕</button>';
         el.appendChild(row);
       });
@@ -1160,6 +1168,19 @@
           cart.splice(Number(btn.dataset.idx), 1);
           renderCart();
           renderGallery();
+        });
+      });
+      el.querySelectorAll('.cr-gift').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var item = cart[Number(btn.dataset.idx)];
+          if (item.soldPrice === 0) {
+            item.soldPrice = item.giftOriginalPrice != null ? item.giftOriginalPrice : item.soldPrice;
+            item.giftOriginalPrice = null;
+          } else {
+            item.giftOriginalPrice = item.soldPrice;
+            item.soldPrice = 0;
+          }
+          renderCart();
         });
       });
     }
@@ -1663,6 +1684,7 @@
   function editOrder(o) {
     editingId = o.id;
     $('customerName').value = o.customer_name || '';
+    updateRepeatHint();
     $('soldAt').value = o.sold_at || new Date().toISOString().slice(0, 10);
     $('orderStatus').value = ORDER_STATUSES.indexOf(o.order_status) !== -1 ? o.order_status : ORDER_STATUSES[0];
     $('shipBy').value = o.ship_by || '';
@@ -1711,8 +1733,25 @@
     renderCart();
     renderGallery();
     closeSizePicker();
+    updateRepeatHint();
   }
 
+  /* 純前端比對 allOrders 裡同名客人的歷史訂單數，不用額外打 API。
+     名字用 trim + 轉小寫比對，跟系統「沒有客人 ID、只有自由輸入名字」的現況一致，
+     同一人打錯字 / 全半形不同會被當成新客人，這是已知的限制，不是 bug。 */
+  function updateRepeatHint() {
+    var el = $('repeatHint');
+    var name = $('customerName').value.trim().toLowerCase();
+    if (!name) { el.style.display = 'none'; return; }
+    var pastCount = allOrders.filter(function (o) {
+      return o.id !== editingId && (o.customer_name || '').trim().toLowerCase() === name;
+    }).length;
+    if (pastCount === 0) { el.style.display = 'none'; return; }
+    el.textContent = '🔁 本次為回購第 ' + (pastCount + 1) + ' 次';
+    el.style.display = '';
+  }
+
+  $('customerName').addEventListener('input', updateRepeatHint);
   $('cancelEdit').addEventListener('click', resetForm);
 
   $('orderForm').addEventListener('submit', async function (e) {
