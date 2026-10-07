@@ -178,6 +178,12 @@
     font-size: 12.5px; padding: 3px 2px; border: 1px solid var(--line-strong); border-radius: 6px; flex-shrink: 0;
   }
   .cart-row .cr-qty-label { font-size: 10.5px; color: var(--ink-soft); flex-shrink: 0; }
+  /* .form-panel 固定 400px 寬（見 .layout 的 grid-template-columns），扣掉縮圖+數量+價格+
+     兩個按鈕後，名稱常常只剩十幾 px，會被擠成一字一行。用一個隱形的「強制換行」元素，
+     讓縮圖+名稱固定佔第一行、其他操作擠到第二行，不管視窗多寬都適用。 */
+  .cart-row { flex-wrap: wrap; }
+  .cart-row .cr-break { display: block; flex-basis: 100%; height: 0; }
+  .cart-row .cr-name { flex-basis: 0; }
   .cart-row .cr-gift {
     background: none; border: 1px solid var(--line-strong); color: var(--ink-soft); cursor: pointer;
     font-size: 11px; padding: 3px 7px; border-radius: 6px; flex-shrink: 0; white-space: nowrap;
@@ -363,7 +369,7 @@
     <div class="so-grid" id="statusOverviewGrid"></div>
   </details>
 
-  <details class="product-breakdown" id="productBreakdown" open>
+  <details class="product-breakdown" id="productBreakdown">
     <summary>各商品總計<span class="count-badge" id="productBreakdownCount">0</span></summary>
     <div class="pb-table" id="productBreakdownTable"><p class="empty-state">還沒有資料。</p></div>
   </details>
@@ -1146,6 +1152,7 @@
           (item.photoUrl ? '<img src="' + escapeHtml(item.photoUrl) + '" alt="">' : '') +
           '<div class="cr-name">' + escapeHtml(item.itemName) + (item.size ? ' <span class="cr-size">(' + escapeHtml(item.size) + ')</span>' : '') +
             (over ? '<div class="cr-stock-warn">⚠️ 庫存只剩 ' + avail + ' 個，這樣會變成缺 ' + (item.qty - avail) + ' 個</div>' : '') + '</div>' +
+          '<span class="cr-break"></span>' +
           '<span class="cr-qty-label">數量</span>' +
           '<input type="number" class="cr-qty" min="1" step="1" value="' + item.qty + '" data-idx="' + idx + '">' +
           '<div class="cr-nums">NT$' + fmt(item.cost * item.qty) + ' → NT$' + fmt(item.soldPrice * item.qty) + '</div>' +
@@ -1752,7 +1759,7 @@
       return o.id !== editingId && customerKey(o.customer_name) === key;
     }).length;
     if (pastCount === 0) { el.style.display = 'none'; return; }
-    el.textContent = '🔁 本次為回購第 ' + (pastCount + 1) + ' 次';
+    el.textContent = '🔁 本次為回購第 ' + pastCount + ' 次';
     el.style.display = '';
   }
 
