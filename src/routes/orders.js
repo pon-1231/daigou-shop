@@ -31,7 +31,9 @@ function parseItems(raw) {
     cost: Number(it.cost) || 0,
     sold_price: Number(it.soldPrice) || 0,
     // 從商品圖庫選的才有，手動輸入的是 null，null 就不扣庫存
-    priced_item_id: it.productId || null
+    priced_item_id: it.productId || null,
+    // 是不是贈品跟售價是不是 0 分開存，不要用「售價 === 0」反推
+    is_gift: !!it.isGift
   }));
 }
 
@@ -78,6 +80,40 @@ async function applyOrderStockMovements(orderId, items) {
 async function syncOrderStock(orderId, items) {
   await clearOrderStockMovements(orderId);
   if (items && items.length) await applyOrderStockMovements(orderId, items);
+}
+
+/* ---------- 到貨勾選跟著「整批重算」走 ----------
+   編輯訂單時 order_items 會整批刪掉重建（見上面 PUT /:id），id 會變。
+   商品本身沒換（名稱/尺寸/成本/售價都一樣）的話，把舊的到貨勾選狀態接回新的那幾筆，
+   不然使用者每次改個出貨日期，到貨勾選就莫名其妙被洗掉。 */
+function itemKey(it) {
+  return (it.item_name || '') + '|||' + (it.size || '') + '|||' + (Number(it.cost) || 0) + '|||' + (Number(it.sold_price) || 0) + '|||' + (!!it.is_gift);
+}
+
+async function preserveReceivedStatus(oldItems, newItems) {
+  const receivedCountByKey = {};
+  oldItems.forEach((it) => {
+    if (!it.received) return;
+    const key = itemKey(it);
+    receivedCountByKey[key] = (receivedCountByKey[key] || 0) + 1;
+  });
+  if (Object.keys(receivedCountByKey).length === 0) return;
+
+  const idsByKey = {};
+  newItems.forEach((it) => {
+    const key = itemKey(it);
+    (idsByKey[key] = idsByKey[key] || []).push(it.id);
+  });
+
+  const idsToMark = [];
+  Object.keys(receivedCountByKey).forEach((key) => {
+    const ids = idsByKey[key] || [];
+    idsToMark.push(...ids.slice(0, receivedCountByKey[key]));
+  });
+  if (idsToMark.length === 0) return;
+
+  const { error } = await supabase.from('order_items').update({ received: true }).in('id', idsToMark);
+  if (error) throw error;
 }
 
 async function recordHistory(orderId) {
@@ -132,6 +168,21 @@ router.get('/:id/history', async (req, res) => {
     .select('*')
     .eq('order_id', req.params.id)
     .order('edited_at', { ascending: false });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+router.patch('/items/received', async (req, res) => {
+  if (!supabase) return res.status(500).json({ error: 'Supabase 尚未設定' });
+  const body = req.body || {};
+  const ids = Array.isArray(body.ids) ? body.ids.filter(Boolean) : [];
+  if (ids.length === 0) return res.status(400).json({ error: '沒有指定要更新的商品' });
+
+  const { data, error } = await supabase
+    .from('order_items')
+    .update({ received: !!body.received })
+    .in('id', ids)
+    .select('id, received');
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
@@ -220,6 +271,11 @@ router.put('/:id', (req, res) => {
         .single();
       if (orderErr) throw orderErr;
 
+      const { data: oldItems } = await supabase
+        .from('order_items')
+        .select('item_name, size, cost, sold_price, is_gift, received')
+        .eq('order_id', req.params.id);
+
       const { error: delErr } = await supabase.from('order_items').delete().eq('order_id', req.params.id);
       if (delErr) throw delErr;
 
@@ -228,8 +284,10 @@ router.put('/:id', (req, res) => {
       if (itemsErr) throw itemsErr;
 
       await syncOrderStock(req.params.id, savedItems);
+      await preserveReceivedStatus(oldItems || [], savedItems);
 
-      order.order_items = savedItems;
+      const { data: finalItems } = await supabase.from('order_items').select('*').eq('order_id', req.params.id);
+      order.order_items = finalItems || savedItems;
       res.json(order);
     } catch (err) {
       res.status(500).json({ error: err.message });

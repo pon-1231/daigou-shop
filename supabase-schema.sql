@@ -116,6 +116,13 @@ create table if not exists order_items (
 
 create index if not exists order_items_order_id_idx on order_items(order_id);
 
+-- 4a. 單樣商品的到貨狀態（跟中國那邊調貨，到貨前後分開打勾用）
+alter table order_items add column if not exists received boolean not null default false;
+
+-- 4b. 是不是贈品，跟售價是不是 0 分開存。有些商品本來售價就設 0（例如包材），
+--     不想因為剛好賣 0 元就被自動當成贈品，所以要獨立一個欄位明確標記。
+alter table order_items add column if not exists is_gift boolean not null default false;
+
 -- 4b. 訂單編輯歷史(每次編輯或改狀態之前，先把當時的樣子存一份快照)
 create table if not exists order_history (
   id uuid primary key default gen_random_uuid(),
