@@ -307,6 +307,11 @@
   }
   .oc-item.is-received { opacity: 0.55; }
   .oc-item.is-received .oi-name { text-decoration: line-through; }
+  .oi-receive-all {
+    display: flex; justify-content: flex-end; align-items: center; gap: 4px;
+    font-size: 11.5px; font-weight: 600; color: var(--ink-soft); cursor: pointer; user-select: none;
+    margin-top: 10px;
+  }
 
   .oc-totals { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12.5px; }
   .oc-note { font-size: 15px; color: var(--bad); font-weight: 600; margin-top: 6px; }
@@ -369,6 +374,7 @@
 
   <div class="stat-row" id="statRow">
     <div class="stat-tile"><div class="st-label">總訂單數</div><div class="st-value" id="statCount">0</div></div>
+    <div class="stat-tile"><div class="st-label">總金額</div><div class="st-value" id="statTotalSold">NT$0</div></div>
     <div class="stat-tile"><div class="st-label">總淨利</div><div class="st-value" id="statProfit">NT$0</div></div>
     <div class="stat-tile"><div class="st-label">平均每單淨利</div><div class="st-value" id="statAvgProfit">NT$0</div></div>
     <div class="stat-tile"><div class="st-label">平均淨利率</div><div class="st-value" id="statAvgMargin">0%</div></div>
@@ -1336,6 +1342,7 @@
     var avgProfit = count > 0 ? totalProfit / count : 0;
     var avgMargin = totalSold > 0 ? (totalProfit / totalSold * 100) : 0;
     $('statCount').textContent = count;
+    $('statTotalSold').textContent = 'NT$' + fmt(totalSold);
     $('statProfit').textContent = 'NT$' + fmt(totalProfit);
     $('statAvgProfit').textContent = 'NT$' + fmt(avgProfit);
     $('statAvgMargin').textContent = Math.round(avgMargin) + '%';
@@ -1479,7 +1486,12 @@
       var notShippedYet = (status === ORDER_STATUSES[0] || status === ORDER_STATUSES[1]);
       var isOverdue = o.ship_by && o.ship_by < today && notShippedYet;
 
-      var itemsHtml = mergeItemsForDisplay(o.order_items || []).map(function (it) {
+      var mergedItems = mergeItemsForDisplay(o.order_items || []);
+      var allItemIds = [];
+      mergedItems.forEach(function (it) { allItemIds = allItemIds.concat(it.ids); });
+      var allReceived = mergedItems.length > 0 && mergedItems.every(function (it) { return it.received; });
+
+      var itemsHtml = mergedItems.map(function (it) {
         var thumb = it.photo_url
           ? '<img src="' + escapeHtml(it.photo_url) + '" alt="">'
           : '<div class="oi-placeholder">🖼️</div>';
@@ -1510,6 +1522,7 @@
             '<span class="ship-by-note' + (isOverdue ? ' overdue' : '') + '">' + (isOverdue ? '⚠ 逾期未出貨 · ' : '') + '出貨期限：<input type="date" data-action="ship-by" value="' + (o.ship_by || '') + '"></span>' +
             (o.photo_url ? '<a class="oc-photo-link" href="' + escapeHtml(o.photo_url) + '" target="_blank" rel="noopener">📎 訂單照片</a>' : '') +
           '</div>' +
+          (mergedItems.length > 1 ? '<label class="oi-receive-all"><input type="checkbox" data-action="receive-all"' + (allReceived ? ' checked' : '') + '>全選到貨</label>' : '') +
           '<div class="oc-items">' + itemsHtml + '</div>' +
           '<div class="oc-totals">' +
             '<span>成本 NT$' + fmt(totalCost) + '</span>' +
@@ -1644,6 +1657,29 @@
           }
         });
       });
+
+      var receiveAllCheckbox = card.querySelector('[data-action="receive-all"]');
+      if (receiveAllCheckbox) {
+        receiveAllCheckbox.addEventListener('change', async function () {
+          var received = receiveAllCheckbox.checked;
+          receiveAllCheckbox.disabled = true;
+          try {
+            var res = await fetch('/api/orders/items/received', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ids: allItemIds, received: received })
+            });
+            if (!res.ok) throw new Error();
+            (o.order_items || []).forEach(function (it) { it.received = received; });
+            renderAll();
+            showToast(received ? '已全部設為到貨' : '已全部取消到貨');
+          } catch (e) {
+            receiveAllCheckbox.checked = !received;
+            receiveAllCheckbox.disabled = false;
+            showToast('更新失敗，請再試一次');
+          }
+        });
+      }
     });
   }
 
