@@ -207,9 +207,10 @@
   .so-tile .so-sub { font-size: 11px; color: var(--ink-soft); margin-top: 2px; }
   .so-tile.s-待處理 { background: var(--warn-soft); }
   .so-tile.s-待處理 .so-label, .so-tile.s-待處理 .so-value { color: var(--warn); }
-  .so-tile.s-已下貨, .so-tile.s-已出貨 { background: var(--accent-soft); }
-  .so-tile.s-已下貨 .so-label, .so-tile.s-已下貨 .so-value,
-  .so-tile.s-已出貨 .so-label, .so-tile.s-已出貨 .so-value { color: var(--accent); }
+  .so-tile.s-已下貨 { background: var(--accent-soft); }
+  .so-tile.s-已下貨 .so-label, .so-tile.s-已下貨 .so-value { color: var(--accent); }
+  .so-tile.s-已出貨 { background: var(--navy-soft); }
+  .so-tile.s-已出貨 .so-label, .so-tile.s-已出貨 .so-value { color: var(--navy); }
   .so-tile.s-已完成 { background: var(--good-soft); }
   .so-tile.s-已完成 .so-label, .so-tile.s-已完成 .so-value { color: var(--good); }
   .so-tile.s-overdue { background: var(--bad-soft); }
@@ -278,7 +279,8 @@
     font-family: var(--font-body); font-size: 11.5px; font-weight: 600; padding: 3px 8px; border-radius: 999px; border: none; cursor: pointer;
   }
   .status-select.s-待處理 { background: var(--warn-soft); color: var(--warn); }
-  .status-select.s-已下貨, .status-select.s-已出貨 { background: var(--accent-soft); color: var(--accent); }
+  .status-select.s-已下貨 { background: var(--accent-soft); color: var(--accent); }
+  .status-select.s-已出貨 { background: var(--navy-soft); color: var(--navy); }
   .status-select.s-已完成 { background: var(--good-soft); color: var(--good); }
   .status-updated-note { font-size: 11px; color: var(--ink-soft); font-family: var(--font-mono); }
   .ship-by-note { font-size: 11.5px; color: var(--ink-soft); font-family: var(--font-mono); }
