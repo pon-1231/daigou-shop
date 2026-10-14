@@ -1701,6 +1701,11 @@
     var idSet = {};
     ids.forEach(function (id) { idSet[id] = true; });
     var matches = allOrders.filter(function (o) { return idSet[o.id]; });
+
+    // 跟商品清單用同一套分類群組排序（A、B、C...未分類放最後），手動輸入沒連商品的歸「未分類」。
+    var productById = {};
+    allProducts.forEach(function (p) { productById[p.id] = p; });
+
     var byKey = {};
     var order = [];
     matches.forEach(function (o) {
@@ -1708,11 +1713,31 @@
         var name = it.item_name || '未命名商品';
         var size = it.size || '';
         var key = name + '::' + size;
-        if (!byKey[key]) { byKey[key] = { name: name, size: size, qty: 0 }; order.push(key); }
+        if (!byKey[key]) {
+          var product = it.priced_item_id ? productById[it.priced_item_id] : null;
+          var sortGroup = (product && product.sort_group ? product.sort_group.trim() : '') || '未分類';
+          byKey[key] = {
+            name: name, size: size, qty: 0, sortGroup: sortGroup,
+            itemNo: product && product.item_no != null ? product.item_no : Infinity
+          };
+          order.push(key);
+        }
         byKey[key].qty += 1;
       });
     });
     if (order.length === 0) return '';
+
+    order.sort(function (ka, kb) {
+      var a = byKey[ka], b = byKey[kb];
+      if (a.sortGroup !== b.sortGroup) {
+        if (a.sortGroup === '未分類') return 1;
+        if (b.sortGroup === '未分類') return -1;
+        return a.sortGroup.localeCompare(b.sortGroup, 'zh-Hant');
+      }
+      if (a.itemNo !== b.itemNo) return a.itemNo - b.itemNo;
+      return a.name.localeCompare(b.name, 'zh-Hant');
+    });
+
     var totalQty = order.reduce(function (s, k) { return s + byKey[k].qty; }, 0);
     var rows = order.map(function (k) {
       var r = byKey[k];
