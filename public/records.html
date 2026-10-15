@@ -676,6 +676,31 @@
         sizes.forEach(function (s) { options.push({ product: p, size: s, color: p.color || '' }); });
       }
     });
+
+    /* 編輯過、或用「新增尺寸」拆出來的款式，在資料庫裡的順序會被排到最後，
+       畫面上就會跟同尺寸的其他顏色斷開、整個掉到清單最下面。改成照「尺寸第一次
+       出現的順序」分組，組內維持原本順序，新款式就會乖乖排回自己那個尺寸底下。
+       有些舊商品沒有獨立的尺寸欄位，尺寸是直接寫在顏色欄位後面的括號裡
+       （例如「紅黑（5寸大框）」），這種情況改抓括號裡的字當分組依據。 */
+    function sizeGroupKey(opt) {
+      if (opt.size) return opt.size;
+      var m = /[（(]([^）)]+)[）)]\s*$/.exec(opt.color || '');
+      return m ? m[1] : '';
+    }
+    var sizeOrder = [];
+    options.forEach(function (opt) {
+      var key = sizeGroupKey(opt);
+      if (sizeOrder.indexOf(key) === -1) sizeOrder.push(key);
+    });
+    options = options
+      .map(function (opt, idx) { return { opt: opt, idx: idx }; })
+      .sort(function (a, b) {
+        var sa = sizeOrder.indexOf(sizeGroupKey(a.opt)), sb = sizeOrder.indexOf(sizeGroupKey(b.opt));
+        if (sa !== sb) return sa - sb;
+        return a.idx - b.idx;
+      })
+      .map(function (x) { return x.opt; });
+
     return options;
   }
 
