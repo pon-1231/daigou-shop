@@ -642,6 +642,14 @@
     return order.map(function (name) { return { name: name, variants: byName[name] }; });
   }
 
+  /* 跟 pricing.html 同一套固定色票，不在清單裡的值（複合色、尺寸、款式名稱…）
+     維持原本相對順序排在後面，不受影響。 */
+  var COLOR_ORDER = ['紅', '粉', '橘', '橙', '黃', '綠', '青', '藍', '紫', '黑', '白', '棕', '灰', '金', '銀', '彩色'];
+  function colorRank(v) {
+    var i = COLOR_ORDER.indexOf(v);
+    return i === -1 ? Infinity : i;
+  }
+
   function pickerOptionLabel(size, color, spec1Name) {
     var parts = [];
     if (size) parts.push(size);
@@ -710,6 +718,8 @@
       .sort(function (a, b) {
         var sa = sizeOrder.indexOf(sizeGroupKey(a.opt)), sb = sizeOrder.indexOf(sizeGroupKey(b.opt));
         if (sa !== sb) return sa - sb;
+        var ca = colorRank(a.opt.color), cb = colorRank(b.opt.color);
+        if (ca !== cb) return ca - cb;
         return a.idx - b.idx;
       })
       .map(function (x) { return x.opt; });

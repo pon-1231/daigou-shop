@@ -765,13 +765,15 @@
      直接合併成一行、規格選項寫在一起顯示，跟只有一筆的商品長得一樣，一目了然。 */
   function buildMergedSinglePriceRow(items) {
     var first = items[0];
-    var v1s = [], v1Seen = {};
-    var v2s = [], v2Seen = {};
-    items.forEach(function (it) {
+    var v1List = [], v1Seen = {};
+    var v2List = [], v2Seen = {};
+    items.forEach(function (it, idx) {
       var av = axisValues(it);
-      if (av.v1 && !v1Seen[av.v1]) { v1Seen[av.v1] = true; v1s.push(av.v1); }
-      if (av.v2 && !v2Seen[av.v2]) { v2Seen[av.v2] = true; v2s.push(av.v2); }
+      if (av.v1 && !v1Seen[av.v1]) { v1Seen[av.v1] = true; v1List.push({ v: av.v1, idx: idx }); }
+      if (av.v2 && !v2Seen[av.v2]) { v2Seen[av.v2] = true; v2List.push({ v: av.v2, idx: idx }); }
     });
+    var v1s = sortByColorOrder(v1List).map(function (x) { return x.v; });
+    var v2s = sortByColorOrder(v2List).map(function (x) { return x.v; });
     var mergedForBadges = {
       spec1_name: first.spec1_name, spec1_value: v1s.join('、'), color: first.color,
       spec2_name: first.spec2_name, spec2_value: v2s.join('、'), sizes: v2s.join(',')
@@ -832,6 +834,24 @@
 
   function axisValues(it) {
     return { v1: it.spec1_value || it.color || '', v2: it.spec2_value || it.sizes || '' };
+  }
+
+  /* 顏色/規格清單原本是照建立時間排的，後來補的顏色會自動排到最後、跟相近色系
+     斷開（例如「綠」排在「黃、青」中間才對，不該因為是後來新增的就掉到最後）。
+     改成照這份固定色票排序；不在清單裡的值（複合色、尺寸、款式名稱…）維持原本
+     相對順序排在後面，不受影響。 */
+  var COLOR_ORDER = ['紅', '粉', '橘', '橙', '黃', '綠', '青', '藍', '紫', '黑', '白', '棕', '灰', '金', '銀', '彩色'];
+  function colorRank(v) {
+    var i = COLOR_ORDER.indexOf(v);
+    return i === -1 ? Infinity : i;
+  }
+  function sortByColorOrder(list) {
+    // list: [{ v: 值, idx: 原本第一次出現的順序 }]
+    return list.slice().sort(function (a, b) {
+      var ra = colorRank(a.v), rb = colorRank(b.v);
+      if (ra !== rb) return ra - rb;
+      return a.idx - b.idx;
+    });
   }
 
   function sizeLineHtml(it, labelOverride) {
