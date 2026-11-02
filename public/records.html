@@ -213,6 +213,8 @@
   .so-tile.s-已出貨 .so-label, .so-tile.s-已出貨 .so-value { color: var(--shipped); }
   .so-tile.s-已完成 { background: var(--good-soft); }
   .so-tile.s-已完成 .so-label, .so-tile.s-已完成 .so-value { color: var(--good); }
+  .so-tile.s-已取消 { background: var(--cancelled-soft); }
+  .so-tile.s-已取消 .so-label, .so-tile.s-已取消 .so-value { color: var(--cancelled); }
   .so-tile.s-overdue { background: var(--bad-soft); }
   .so-tile.s-overdue .so-label, .so-tile.s-overdue .so-value { color: var(--bad); }
 
@@ -282,6 +284,7 @@
   .status-select.s-已下貨 { background: var(--accent-soft); color: var(--accent); }
   .status-select.s-已出貨 { background: var(--shipped-soft); color: var(--shipped); }
   .status-select.s-已完成 { background: var(--good-soft); color: var(--good); }
+  .status-select.s-已取消 { background: var(--cancelled-soft); color: var(--cancelled); }
   .status-updated-note { font-size: 11px; color: var(--ink-soft); font-family: var(--font-mono); }
   .ship-by-note { font-size: 11.5px; color: var(--ink-soft); font-family: var(--font-mono); }
   .ship-by-note.overdue { color: var(--bad); font-weight: 700; }
@@ -317,6 +320,7 @@
 
   .oc-totals { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12.5px; }
   .oc-note { font-size: 15px; color: var(--bad); font-weight: 600; margin-top: 6px; }
+  .oc-discount { font-size: 12.5px; color: var(--warn); margin-top: 6px; }
   .oc-actions { display: flex; gap: 6px; margin-top: 10px; }
 
   .oc-history { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); display: flex; flex-direction: column; gap: 10px; }
@@ -453,6 +457,15 @@
             <div class="cart-list" id="cartList"><p class="empty-state">還沒有加入任何商品。</p></div>
           </div>
 
+          <div class="field">
+            <label>總金額<span class="hint">選填，有折價券等調整時填實際收到的金額，留空 = 商品售價總和</span></label>
+            <input type="number" id="orderTotalOverride" min="0" step="1">
+          </div>
+          <div class="field" id="discountReasonField" style="display:none;">
+            <label>調整金額的理由<span class="required-mark">*</span></label>
+            <textarea id="discountReason" placeholder="例如：使用折價券折抵 50 元"></textarea>
+          </div>
+
           <div class="live-profit">
             <span class="chip" id="livePofitChip">淨利 NT$0</span>
             <span class="chip" id="liveMarginChip">淨利率 0%</span>
@@ -520,7 +533,7 @@
   var stockById = {};   // priced_items.id -> { stock, low }，只有開啟追蹤的商品才會在裡面
   var cart = [];
   var selectedOrderIds = new Set();
-  var ORDER_STATUSES = ['待處理', '已下貨', '已出貨', '已完成'];
+  var ORDER_STATUSES = ['待處理', '已下貨', '已出貨', '已完成', '已取消'];
   var activeStatusFilter = null; // status string | '__overdue__' | null
   var editingId = null;
   var currentPhotoUrl = null;
@@ -1240,9 +1253,25 @@
     updateLiveProfit();
   }
 
+  /* 「總金額」欄位留空就是商品售價總和；填了不一樣的數字，差額當成折價券之類的
+     金額調整（discountAmount），送出時會要求一定要填理由。 */
+  function cartItemsTotal() {
+    return cart.reduce(function (s, it) { return s + it.soldPrice * it.qty; }, 0);
+  }
+
+  function getDiscountAmount() {
+    var raw = $('orderTotalOverride').value;
+    if (raw === '') return 0;
+    var val = Number(raw);
+    if (!Number.isFinite(val)) return 0;
+    return cartItemsTotal() - val;
+  }
+
   function updateLiveProfit() {
     var cost = cart.reduce(function (s, it) { return s + it.cost * it.qty; }, 0);
-    var soldPrice = cart.reduce(function (s, it) { return s + it.soldPrice * it.qty; }, 0);
+    var itemsTotal = cartItemsTotal();
+    var discount = getDiscountAmount();
+    var soldPrice = itemsTotal - discount;
     var profit = soldPrice - cost;
     var margin = soldPrice > 0 ? (profit / soldPrice * 100) : 0;
     var pChip = $('livePofitChip'), mChip = $('liveMarginChip');
@@ -1252,7 +1281,12 @@
     if (profit < 0) cls = 'bad'; else if (margin < 25) cls = 'warn';
     pChip.className = 'chip ' + cls;
     mChip.className = 'chip ' + cls;
+
+    $('orderTotalOverride').placeholder = 'NT$' + fmt(itemsTotal);
+    $('discountReasonField').style.display = discount !== 0 ? '' : 'none';
   }
+
+  $('orderTotalOverride').addEventListener('input', updateLiveProfit);
 
   fetch('/api/priced-items').then(function (res) {
     if (!res.ok) throw new Error();
@@ -1331,11 +1365,15 @@
     return merged;
   }
 
+  /* 折價券之類的金額調整是訂單整張算的、不是哪個商品算的，所以不動 order_items，
+     用淨利/總額的時候才一起扣掉。 */
   function orderProfit(o) {
-    return (o.order_items || []).reduce(function (s, it) { return s + ((Number(it.sold_price) || 0) - (Number(it.cost) || 0)); }, 0);
+    var itemsProfit = (o.order_items || []).reduce(function (s, it) { return s + ((Number(it.sold_price) || 0) - (Number(it.cost) || 0)); }, 0);
+    return itemsProfit - (Number(o.discount_amount) || 0);
   }
   function orderSoldTotal(o) {
-    return (o.order_items || []).reduce(function (s, it) { return s + (Number(it.sold_price) || 0); }, 0);
+    var itemsTotal = (o.order_items || []).reduce(function (s, it) { return s + (Number(it.sold_price) || 0); }, 0);
+    return itemsTotal - (Number(o.discount_amount) || 0);
   }
 
   function getBaseFiltered() {
@@ -1363,9 +1401,11 @@
   /* ---------- Stats / breakdown / status overview ---------- */
 
   function updateStats(baseOrders) {
-    var count = baseOrders.length;
-    var totalProfit = baseOrders.reduce(function (s, o) { return s + orderProfit(o); }, 0);
-    var totalSold = baseOrders.reduce(function (s, o) { return s + orderSoldTotal(o); }, 0);
+    // 已取消的訂單不算成交，總金額/淨利這些business指標要排除掉，不然會虛灌營收。
+    var countedOrders = baseOrders.filter(function (o) { return o.order_status !== '已取消'; });
+    var count = countedOrders.length;
+    var totalProfit = countedOrders.reduce(function (s, o) { return s + orderProfit(o); }, 0);
+    var totalSold = countedOrders.reduce(function (s, o) { return s + orderSoldTotal(o); }, 0);
     var avgProfit = count > 0 ? totalProfit / count : 0;
     var avgMargin = totalSold > 0 ? (totalProfit / totalSold * 100) : 0;
     $('statCount').textContent = count;
@@ -1377,7 +1417,7 @@
 
   function renderProductBreakdown(baseOrders) {
     var byProduct = {};
-    baseOrders.forEach(function (o) {
+    baseOrders.filter(function (o) { return o.order_status !== '已取消'; }).forEach(function (o) {
       (o.order_items || []).forEach(function (it) {
         var name = it.item_name || '未命名商品';
         if (!byProduct[name]) byProduct[name] = { name: name, count: 0, profit: 0, bySize: {} };
@@ -1435,8 +1475,8 @@
 
   function renderStatusOverview(baseOrders) {
     var today = new Date().toISOString().slice(0, 10);
-    var counts = { '待處理': 0, '已下貨': 0, '已出貨': 0, '已完成': 0 };
-    var amounts = { '待處理': 0, '已下貨': 0, '已出貨': 0, '已完成': 0 };
+    var counts = { '待處理': 0, '已下貨': 0, '已出貨': 0, '已完成': 0, '已取消': 0 };
+    var amounts = { '待處理': 0, '已下貨': 0, '已出貨': 0, '已完成': 0, '已取消': 0 };
     var overdueCount = 0;
 
     baseOrders.forEach(function (o) {
@@ -1557,6 +1597,7 @@
             (o.shipping_fee ? '<span>運費 NT$' + fmt(o.shipping_fee) + '</span>' : '') +
             '<span class="chip ' + cls + '">淨利 NT$' + fmt(profit) + '</span>' +
           '</div>' +
+          (Number(o.discount_amount) ? '<div class="oc-discount">' + (o.discount_amount > 0 ? '折價' : '加收') + ' NT$' + fmt(Math.abs(o.discount_amount)) + (o.discount_reason ? '：' + escapeHtml(o.discount_reason) : '') + '</div>' : '') +
           (o.note ? '<div class="oc-note">' + escapeHtml(o.note) + '</div>' : '') +
           '<div class="oc-actions">' +
             '<button type="button" class="btn small" data-action="edit">編輯</button>' +
@@ -1848,6 +1889,11 @@
     renderCart();
     renderGallery();
 
+    var existingDiscount = Number(o.discount_amount) || 0;
+    $('orderTotalOverride').value = existingDiscount !== 0 ? (cartItemsTotal() - existingDiscount) : '';
+    $('discountReason').value = o.discount_reason || '';
+    updateLiveProfit();
+
     currentPhotoUrl = o.photo_url || null;
     if (o.photo_url) { $('photoPreview').src = o.photo_url; $('photoPreview').style.display = 'block'; }
     else { $('photoPreview').style.display = 'none'; }
@@ -1933,6 +1979,13 @@
       errEl.classList.add('show');
       return;
     }
+    var discountAmount = getDiscountAmount();
+    var discountReason = $('discountReason').value.trim();
+    if (discountAmount !== 0 && !discountReason) {
+      errEl.textContent = '總金額有調整，請填寫理由。';
+      errEl.classList.add('show');
+      return;
+    }
 
     var isEditing = !!editingId;
     var fd = new FormData();
@@ -1941,6 +1994,8 @@
     fd.append('shipBy', $('shipBy').value || '');
     fd.append('note', $('note').value.trim());
     fd.append('soldAt', $('soldAt').value || new Date().toISOString().slice(0, 10));
+    fd.append('discountAmount', String(discountAmount));
+    fd.append('discountReason', discountAmount !== 0 ? discountReason : '');
     /* 後端資料表沒有數量欄位，一件一行存，所以送出前把每行的數量展開成對應件數的獨立項目。 */
     var expandedItems = [];
     cart.forEach(function (it) {

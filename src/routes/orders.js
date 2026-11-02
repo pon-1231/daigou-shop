@@ -3,7 +3,7 @@ const multer = require('multer');
 const router = express.Router();
 const supabase = require('../supabaseClient');
 
-const ORDER_STATUSES = ['待處理', '已下貨', '已出貨', '已完成'];
+const ORDER_STATUSES = ['待處理', '已下貨', '已出貨', '已完成', '已取消'];
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -35,6 +35,15 @@ function parseItems(raw) {
     // 是不是贈品跟售價是不是 0 分開存，不要用「售價 === 0」反推
     is_gift: !!it.isGift
   }));
+}
+
+/* 折價券之類的金額調整：有調整（不等於 0）就一定要填理由，不然淨利數字變了
+   卻說不出為什麼，之後對帳會看不懂。回傳 null 代表資料不合法。 */
+function parseDiscount(body) {
+  const amount = Number(body.discountAmount) || 0;
+  const reason = String(body.discountReason || '').trim().slice(0, 500);
+  if (amount !== 0 && !reason) return null;
+  return { discount_amount: amount, discount_reason: amount !== 0 ? reason : null };
 }
 
 /* ---------- 庫存連動 ----------
@@ -195,6 +204,8 @@ router.post('/', (req, res) => {
     const body = req.body || {};
     const items = parseItems(body.items);
     if (!items) return res.status(400).json({ error: '訂單至少要有一樣商品' });
+    const discount = parseDiscount(body);
+    if (!discount) return res.status(400).json({ error: '有調整總金額時，請填寫理由' });
 
     try {
       let photoUrl = null;
@@ -208,7 +219,9 @@ router.post('/', (req, res) => {
         shipping_fee: Number(body.shippingFee) || 0,
         note: String(body.note || '').slice(0, 1000),
         photo_url: photoUrl,
-        sold_at: body.soldAt || new Date().toISOString().slice(0, 10)
+        sold_at: body.soldAt || new Date().toISOString().slice(0, 10),
+        discount_amount: discount.discount_amount,
+        discount_reason: discount.discount_reason
       };
 
       const { data: order, error: orderErr } = await supabase.from('orders').insert(orderRow).select().single();
@@ -236,6 +249,8 @@ router.put('/:id', (req, res) => {
     const body = req.body || {};
     const items = parseItems(body.items);
     if (!items) return res.status(400).json({ error: '訂單至少要有一樣商品' });
+    const discount = parseDiscount(body);
+    if (!discount) return res.status(400).json({ error: '有調整總金額時，請填寫理由' });
 
     try {
       let photoUrl = body.keepPhotoUrl || null;
@@ -257,7 +272,9 @@ router.put('/:id', (req, res) => {
         shipping_fee: Number(body.shippingFee) || 0,
         note: String(body.note || '').slice(0, 1000),
         photo_url: photoUrl,
-        sold_at: body.soldAt || new Date().toISOString().slice(0, 10)
+        sold_at: body.soldAt || new Date().toISOString().slice(0, 10),
+        discount_amount: discount.discount_amount,
+        discount_reason: discount.discount_reason
       };
       if (!existingOrder || existingOrder.order_status !== newStatus) {
         orderRow.status_updated_at = new Date().toISOString();

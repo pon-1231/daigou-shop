@@ -102,6 +102,11 @@ create table if not exists orders (
 alter table orders add column if not exists status_updated_at timestamptz not null default now();
 alter table orders add column if not exists deleted_at timestamptz;
 
+-- 3c. 折價券之類的金額調整：跟商品本身的售價分開存，不去改動 order_items，
+--     有調整金額（不等於 0）前端就會強制要求填 discount_reason。
+alter table orders add column if not exists discount_amount numeric not null default 0;
+alter table orders add column if not exists discount_reason text;
+
 -- 4. 訂單裡的每一樣商品
 create table if not exists order_items (
   id uuid primary key default gen_random_uuid(),
