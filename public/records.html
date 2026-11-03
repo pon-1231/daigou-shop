@@ -642,12 +642,18 @@
     return order.map(function (name) { return { name: name, variants: byName[name] }; });
   }
 
-  /* 跟 pricing.html 同一套固定色票，不在清單裡的值（複合色、尺寸、款式名稱…）
-     維持原本相對順序排在後面，不受影響。 */
+  /* 跟 pricing.html 同一套固定色票。完全比對不到的話，改照色票順序找「字串裡含
+     哪個基礎色」來歸類（例如「紅黑」含「紅」就排在「紅」附近），不在清單裡的值
+     （尺寸、款式名稱…）才維持原本相對順序排在最後。 */
   var COLOR_ORDER = ['紅', '粉', '橘', '橙', '黃', '綠', '青', '藍', '紫', '黑', '白', '棕', '灰', '金', '銀', '彩色'];
   function colorRank(v) {
-    var i = COLOR_ORDER.indexOf(v);
-    return i === -1 ? Infinity : i;
+    if (!v) return Infinity;
+    var exact = COLOR_ORDER.indexOf(v);
+    if (exact !== -1) return exact * 2;
+    for (var i = 0; i < COLOR_ORDER.length; i++) {
+      if (v.indexOf(COLOR_ORDER[i]) !== -1) return i * 2 + 1;
+    }
+    return Infinity;
   }
 
   function pickerOptionLabel(size, color, spec1Name) {

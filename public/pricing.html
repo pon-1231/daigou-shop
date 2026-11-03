@@ -839,11 +839,20 @@
   /* 顏色/規格清單原本是照建立時間排的，後來補的顏色會自動排到最後、跟相近色系
      斷開（例如「綠」排在「黃、青」中間才對，不該因為是後來新增的就掉到最後）。
      改成照這份固定色票排序；不在清單裡的值（複合色、尺寸、款式名稱…）維持原本
-     相對順序排在後面，不受影響。 */
+     相對順序排在後面，不受影響。
+     複合色（紅黑、紫粉、冰藍…）比對不到完全一樣的字，就照色票順序找「字串裡含
+     哪個基礎色」來歸類，讓它排在那個色系旁邊，而不是整批掉到最後——例如「紅黑」
+     含「紅」就排在「紅」附近、「冰藍」含「藍」就排在「藍」附近。同色系的複合色
+     彼此之間維持原本相對順序。 */
   var COLOR_ORDER = ['紅', '粉', '橘', '橙', '黃', '綠', '青', '藍', '紫', '黑', '白', '棕', '灰', '金', '銀', '彩色'];
   function colorRank(v) {
-    var i = COLOR_ORDER.indexOf(v);
-    return i === -1 ? Infinity : i;
+    if (!v) return Infinity;
+    var exact = COLOR_ORDER.indexOf(v);
+    if (exact !== -1) return exact * 2;
+    for (var i = 0; i < COLOR_ORDER.length; i++) {
+      if (v.indexOf(COLOR_ORDER[i]) !== -1) return i * 2 + 1;
+    }
+    return Infinity;
   }
   function sortByColorOrder(list) {
     // list: [{ v: 值, idx: 原本第一次出現的順序 }]
