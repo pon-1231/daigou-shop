@@ -780,11 +780,19 @@
     return card;
   }
 
+  /* 跟 pricing.html 同一套邏輯：名稱前面手動加的「(1)」「(2)」編號優先於建立時間。 */
+  function nameOrderPrefix(name) {
+    var m = /^[（(]\s*(\d+)\s*[）)]/.exec(name || '');
+    return m ? Number(m[1]) : Infinity;
+  }
+
   function sortByItemNo(products) {
     return products.slice().sort(function (a, b) {
       var an = a.item_no != null ? a.item_no : Infinity;
       var bn = b.item_no != null ? b.item_no : Infinity;
       if (an !== bn) return an - bn;
+      var pa = nameOrderPrefix(a.name), pb = nameOrderPrefix(b.name);
+      if (pa !== pb) return pa - pb;
       return new Date(a.created_at) - new Date(b.created_at);
     });
   }

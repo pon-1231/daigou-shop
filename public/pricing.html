@@ -1040,11 +1040,22 @@
     groupByName(items).forEach(function (nameItems) { container.appendChild(buildSavedProductCard(nameItems)); });
   }
 
+  /* 有些商品會自己在名稱前面手動加「(1)」「(2)」這種編號，用來指定同一個 item_no
+     底下的顯示順序（例如同一張圖出好幾種尺寸，各自是獨立商品但想排在一起、照
+     1、2、3 的順序）。排序時要優先看這個編號，不然光靠建立時間排，名稱裡明明
+     寫了 1、2、3，畫面卻因為建立先後跑掉。沒有編號的商品不受影響，照舊比建立時間。 */
+  function nameOrderPrefix(name) {
+    var m = /^[（(]\s*(\d+)\s*[）)]/.exec(name || '');
+    return m ? Number(m[1]) : Infinity;
+  }
+
   function sortByItemNo(items) {
     return items.slice().sort(function (a, b) {
       var an = a.item_no != null ? a.item_no : Infinity;
       var bn = b.item_no != null ? b.item_no : Infinity;
       if (an !== bn) return an - bn;
+      var pa = nameOrderPrefix(a.name), pb = nameOrderPrefix(b.name);
+      if (pa !== pb) return pa - pb;
       return new Date(a.created_at) - new Date(b.created_at);
     });
   }
