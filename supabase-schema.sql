@@ -163,6 +163,15 @@ create table if not exists stock_movements (
 create index if not exists stock_movements_item_idx on stock_movements(priced_item_id);
 create index if not exists stock_movements_order_idx on stock_movements(order_id);
 
+-- 4d. 同一批貨用不同包裝賣（例如「50包/袋」整袋賣、「1包」拆開賣）要共用同一份庫存，
+--     不是兩個獨立數字。stock_group_id 一樣的商品算同一個庫存池；stock_unit_size 是
+--     「這個款式的 1 個單位＝幾個基本單位」（「50包/袋」填 50、「1包」填 1），進貨/
+--     訂單扣帳時都會先乘上這個數字再寫進 stock_movements，所以 delta 永遠是基本單位，
+--     兩個款式庫存池加總起來就直接是真正剩下的基本單位數，不用再換算。
+alter table priced_items add column if not exists stock_group_id uuid;
+alter table priced_items add column if not exists stock_unit_size integer not null default 1;
+create index if not exists priced_items_stock_group_idx on priced_items(stock_group_id);
+
 -- 5. 把舊的 sales_records 資料搬進新的 orders / order_items（只需執行一次）
 --    如果這是全新安裝、sales_records 是空的，這段執行了也不會出錯，會直接跳過。
 insert into orders (id, customer_name, order_status, ship_by, shipping_fee, note, photo_url, sold_at, created_at)

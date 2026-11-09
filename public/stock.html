@@ -70,6 +70,7 @@
   .sr-main { flex: 1 1 200px; min-width: 0; }
   .sr-name { font-weight: 600; font-size: 14px; }
   .sr-spec { font-size: 12.5px; color: var(--ink-soft); }
+  .sr-share { font-size: 11.5px; color: var(--accent); margin-top: 2px; }
   .sr-stock {
     font-family: var(--font-mono); font-variant-numeric: tabular-nums;
     font-size: 20px; font-weight: 700; min-width: 56px; text-align: right;
@@ -96,6 +97,7 @@
   .mv-delta.minus { color: var(--bad); }
   .mv-when { color: var(--ink-soft); font-size: 12px; margin-left: auto; white-space: nowrap; }
   .mv-note { color: var(--ink-soft); font-size: 12.5px; }
+  .mv-variant { color: var(--accent); font-size: 12px; }
 
   /* ---------- 對話框 ---------- */
   .modal-backdrop {
@@ -327,12 +329,17 @@
 
   function trackedRowHtml(it) {
     var spec = specLabel(it);
+    var mates = it.stock_group_mates || [];
+    var shareNote = mates.length > 0
+      ? '<div class="sr-share">🔗 與「' + mates.map(escapeHtml).join('、') + '」共用庫存' + (it.stock_unit_size > 1 ? '（1 個 = ' + it.stock_unit_size + ' 個基本單位）' : '') + '</div>'
+      : '';
     return '<div class="stock-row' + (it.low_stock ? ' is-low' : '') + '">' +
       '<span class="sr-no">' + (it.item_no != null ? it.item_no : '') + '</span>' +
       thumbHtml(it) +
       '<div class="sr-main">' +
         '<div class="sr-name">' + escapeHtml(it.name || '未命名商品') + '</div>' +
         (spec ? '<div class="sr-spec">' + escapeHtml(spec) + '</div>' : '') +
+        shareNote +
       '</div>' +
       '<button type="button" class="sr-stock ' + stockClass(it) + '" data-hist="' + it.id + '" title="看庫存紀錄">' +
         it.stock + '<span class="sr-unit">個</span></button>' +
@@ -437,15 +444,18 @@
     });
     var it = itemById(moveItemId) || {};
     var cur = it.track_stock ? (it.stock || 0) : 0;
+    var unitSize = it.stock_unit_size > 1 ? it.stock_unit_size : 1;
+    var unitNote = unitSize > 1 ? '（這個規格 1 個＝' + unitSize + ' 個基本單位，會自動換算）' : '';
     if (mode === 'in') {
       $('moveQtyLabel').textContent = '進貨數量';
-      $('moveHint').textContent = '目前 ' + cur + ' 個，進貨後會變成 ' + cur + ' + 你填的數量。';
+      $('moveHint').textContent = '目前 ' + cur + ' 個，進貨後會變成 ' + cur + ' + 你填的數量' + (unitSize > 1 ? ' × ' + unitSize : '') + '。' + unitNote;
     } else if (mode === 'out') {
       $('moveQtyLabel').textContent = '要減少的數量';
-      $('moveHint').textContent = '用在送人、報廢、盤點少了這種情況。賣出不用手動減，建立訂單會自動扣。';
+      $('moveHint').textContent = '用在送人、報廢、盤點少了這種情況。賣出不用手動減，建立訂單會自動扣。' + unitNote;
     } else {
-      $('moveQtyLabel').textContent = '實際盤點數量';
-      $('moveHint').textContent = '直接填你現在手上實際有幾個（目前紀錄是 ' + cur + ' 個），系統會自動補上差額。';
+      $('moveQtyLabel').textContent = '實際盤點數量（基本單位）';
+      $('moveHint').textContent = '直接填基本單位的實際數量（目前紀錄是 ' + cur + ' 個），系統會自動補上差額。' +
+        (unitSize > 1 ? '這個規格共用庫存，盤點一律用基本單位，不是「幾個 ' + (it.spec1_value || it.color || '這個規格') + '」。' : '');
     }
   }
 
@@ -484,9 +494,12 @@
       return;
     }
 
+    // 進貨/調整是「填這個規格的幾個」，要乘上換算比例變成基本單位；
+    // 盤點（set）本來就是直接填基本單位，不用換算。
+    var unitSize = it.stock_unit_size > 1 ? it.stock_unit_size : 1;
     var delta;
-    if (moveMode === 'in') delta = qty;
-    else if (moveMode === 'out') delta = -qty;
+    if (moveMode === 'in') delta = qty * unitSize;
+    else if (moveMode === 'out') delta = -qty * unitSize;
     else delta = qty - (it.track_stock ? (it.stock || 0) : 0);
 
     if (delta === 0) {
@@ -543,9 +556,11 @@
       }
       $('histList').innerHTML = rows.map(function (m) {
         var who = m.orders && m.orders.customer_name ? '（' + escapeHtml(m.orders.customer_name) + '）' : '';
+        var fromOther = m.from_other_variant ? '<span class="mv-variant">來自「' + escapeHtml(m.from_other_variant) + '」</span>' : '';
         return '<div class="mv-row">' +
           '<span class="mv-delta ' + (m.delta > 0 ? 'plus' : 'minus') + '">' + (m.delta > 0 ? '+' : '') + m.delta + '</span>' +
           '<span>' + escapeHtml(m.reason) + who + '</span>' +
+          fromOther +
           (m.note ? '<span class="mv-note">' + escapeHtml(m.note) + '</span>' : '') +
           '<span class="mv-when">' + fmtWhen(m.created_at) + '</span>' +
         '</div>';

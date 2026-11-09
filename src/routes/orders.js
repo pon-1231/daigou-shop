@@ -70,15 +70,17 @@ async function applyOrderStockMovements(orderId, items) {
   // 只扣有開啟追蹤的商品，沒在管庫存的不要莫名其妙生出負數。
   const { data: tracked, error: trackErr } = await supabase
     .from('priced_items')
-    .select('id')
+    .select('id, stock_unit_size')
     .in('id', itemIds)
     .eq('track_stock', true);
   if (trackErr) throw trackErr;
   if (!tracked || tracked.length === 0) return;
 
+  // 賣的是「50包/袋」這種整批包裝，扣的要是基本單位（乘上 stock_unit_size），
+  // 不然跟拆開賣的「1包」共用庫存池時數字會對不起來。
   const rows = tracked.map((t) => ({
     priced_item_id: t.id,
-    delta: -qtyByItem[t.id],
+    delta: -qtyByItem[t.id] * (t.stock_unit_size || 1),
     reason: '訂單',
     order_id: orderId
   }));
