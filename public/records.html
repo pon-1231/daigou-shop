@@ -683,12 +683,24 @@
     return 'ok';
   }
 
-  /* 一張卡片可能有好幾個規格，卡片上顯示的是全部規格加起來還剩幾個。 */
+  /* 一張卡片可能有好幾個規格，卡片上顯示的是全部規格加起來還剩幾個。
+     有些規格是共用同一個庫存池（stock_group_id 一樣，例如「50包/袋」跟「1包」），
+     兩個顯示的 stock 數字其實是同一包貨，加總時只能算一次，不然會變成兩倍。 */
   function groupStock(variants) {
     var tracked = variants.filter(function (v) { return stockById[v.id]; });
     if (tracked.length === 0) return null;
+    var seenGroupIds = {};
+    var total = 0;
+    tracked.forEach(function (v) {
+      var gid = stockById[v.id].stockGroupId;
+      if (gid) {
+        if (seenGroupIds[gid]) return; // 同一個共用池已經加過了，跳過
+        seenGroupIds[gid] = true;
+      }
+      total += stockById[v.id].stock;
+    });
     return {
-      total: tracked.reduce(function (s, v) { return s + stockById[v.id].stock; }, 0),
+      total: total,
       anyLow: tracked.some(function (v) { return stockById[v.id].low; })
     };
   }
@@ -1328,7 +1340,7 @@
     }).then(function (data) {
       stockById = {};
       data.items.forEach(function (it) {
-        if (it.track_stock) stockById[it.id] = { stock: it.stock, low: it.low_stock };
+        if (it.track_stock) stockById[it.id] = { stock: it.stock, low: it.low_stock, stockGroupId: it.stock_group_id || null };
       });
       renderGallery();
       renderCart();
