@@ -1565,6 +1565,7 @@
   }
 
   function renderOrderList(baseOrders, items) {
+    var today = new Date().toISOString().slice(0, 10); // 每張卡片自己的「⚠ 逾期未出貨」標記要用，跟篩選邏輯是分開的兩件事
     $('listCount').textContent = items.length + (activeStatusFilter ? ' / ' + baseOrders.length : '');
 
     var filterNote = $('filterNote');
