@@ -33,6 +33,11 @@
   .list-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
   .list-head h2 { margin: 0; }
   .list-head input[type="text"] { font-size: 13.5px; padding: 7px 14px; border-radius: 999px; width: 200px; }
+  .select-all-label {
+    display: inline-flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 500;
+    color: var(--ink-soft); cursor: pointer; margin-right: auto; margin-left: -4px;
+  }
+  .select-all-label input { width: auto; cursor: pointer; }
 
   .field-error { color: var(--bad); font-size: 12.5px; margin-top: 6px; display: none; }
   .field-error.show { display: block; }
@@ -492,6 +497,7 @@
     <section>
       <div class="list-head">
         <h2>訂單列表<span class="count-badge" id="listCount">0</span></h2>
+        <label class="select-all-label"><input type="checkbox" id="selectAllOrders"> 全選</label>
         <input type="text" id="searchRecords" placeholder="搜尋客人或商品…">
       </div>
       <p class="filter-note" id="filterNote" style="display:none;">
@@ -533,6 +539,7 @@
   var stockById = {};   // priced_items.id -> { stock, low }，只有開啟追蹤的商品才會在裡面
   var cart = [];
   var selectedOrderIds = new Set();
+  var currentListIds = []; // 目前畫面上列出來的訂單 id，給「全選」用，依篩選/搜尋結果會變動
   var ORDER_STATUSES = ['待處理', '已下貨', '已出貨', '已完成', '已取消'];
   var activeStatusFilter = null; // status string | '__overdue__' | null
   var editingId = null;
@@ -1546,6 +1553,21 @@
     renderAll();
   });
 
+  $('selectAllOrders').addEventListener('change', function () {
+    var checked = this.checked;
+    currentListIds.forEach(function (id) {
+      if (checked) selectedOrderIds.add(id); else selectedOrderIds.delete(id);
+    });
+    // 直接改畫面上已經畫好的卡片，不用整個重畫一次。
+    Array.prototype.forEach.call(document.querySelectorAll('#orderList .order-card'), function (card) {
+      var cb = card.querySelector('[data-action="select"]');
+      if (!cb) return;
+      cb.checked = checked;
+      card.classList.toggle('selected', checked);
+    });
+    updateBulkBar();
+  });
+
   /* ---------- Order list ---------- */
 
   /* 點了狀態卡片（待處理/已下貨/.../逾期未出貨）之後，不只訂單列表要篩，上面
@@ -1575,6 +1597,11 @@
     } else {
       filterNote.style.display = 'none';
     }
+
+    // 「全選」只選目前畫面上這份列表，篩選/搜尋變了範圍就跟著變；
+    // 勾選框狀態同步成「目前列表是不是全部都已選取」。
+    currentListIds = items.map(function (o) { return o.id; });
+    $('selectAllOrders').checked = currentListIds.length > 0 && currentListIds.every(function (id) { return selectedOrderIds.has(id); });
 
     var listEl = $('orderList');
     listEl.innerHTML = '';
@@ -1685,6 +1712,7 @@
       card.querySelector('[data-action="select"]').addEventListener('change', function () {
         if (this.checked) selectedOrderIds.add(o.id); else selectedOrderIds.delete(o.id);
         card.classList.toggle('selected', this.checked);
+        $('selectAllOrders').checked = currentListIds.length > 0 && currentListIds.every(function (id) { return selectedOrderIds.has(id); });
         updateBulkBar();
       });
 
