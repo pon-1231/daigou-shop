@@ -1548,18 +1548,23 @@
 
   /* ---------- Order list ---------- */
 
-  function renderOrderList(baseOrders) {
+  /* 點了狀態卡片（待處理/已下貨/.../逾期未出貨）之後，不只訂單列表要篩，上面
+     總金額/總淨利這些統計數字也要跟著篩，不然會看到「已出貨 4 單」但淨利
+     還是顯示全部 166 單的總和，數字對不起來。 */
+  function applyStatusFilter(baseOrders) {
+    if (!activeStatusFilter) return baseOrders;
     var today = new Date().toISOString().slice(0, 10);
-    var items = baseOrders.filter(function (o) {
+    return baseOrders.filter(function (o) {
       if (activeStatusFilter === '__overdue__') {
         var status = ORDER_STATUSES.indexOf(o.order_status) !== -1 ? o.order_status : ORDER_STATUSES[0];
         var notShippedYet = (status === ORDER_STATUSES[0] || status === ORDER_STATUSES[1]);
         return o.ship_by && o.ship_by < today && notShippedYet;
       }
-      if (activeStatusFilter && o.order_status !== activeStatusFilter) return false;
-      return true;
+      return o.order_status === activeStatusFilter;
     });
+  }
 
+  function renderOrderList(baseOrders, items) {
     $('listCount').textContent = items.length + (activeStatusFilter ? ' / ' + baseOrders.length : '');
 
     var filterNote = $('filterNote');
@@ -1789,10 +1794,11 @@
 
   function renderAll() {
     var base = getBaseFiltered();
-    updateStats(base);
-    renderProductBreakdown(base);
-    renderStatusOverview(base);
-    renderOrderList(base);
+    var statusFiltered = applyStatusFilter(base);
+    updateStats(statusFiltered);
+    renderProductBreakdown(statusFiltered);
+    renderStatusOverview(base); // 狀態總覽卡片本身要顯示全部狀態的數量，不能被自己篩選過
+    renderOrderList(base, statusFiltered);
   }
 
   /* ---------- Selected-orders combined summary ---------- */
