@@ -164,7 +164,8 @@ function matchItem(rawItem, priceIndex) {
     name: c.name,
     color: c.color || c.spec1_value || '',
     cost: Number(c.actual_cost) || 0,
-    price: Number(c.final_price) || 0
+    price: Number(c.final_price) || 0,
+    photoUrl: c.photo_url || null
   }));
 
   const colorMatches = candidateView.filter((c) => c.color && prefix.remainder.includes(c.color));
@@ -220,7 +221,7 @@ router.post('/feebee/parse', (req, res) => {
 
       const { data: priced, error: pricedErr } = await supabase
         .from('priced_items')
-        .select('id, name, sort_group, item_no, color, spec1_value, actual_cost, final_price')
+        .select('id, name, sort_group, item_no, color, spec1_value, actual_cost, final_price, photo_url')
         .is('deleted_at', null);
       if (pricedErr) throw pricedErr;
       const priceIndex = {};

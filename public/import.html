@@ -30,6 +30,12 @@
   .dup-row { display: flex; justify-content: space-between; gap: 10px; padding: 8px 12px; font-size: 12.5px; color: var(--ink-soft); border-bottom: 1px dashed var(--line); }
   .dup-row:last-child { border-bottom: none; }
 
+  .select-all-label {
+    display: inline-flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 500;
+    color: var(--ink-soft); cursor: pointer;
+  }
+  .select-all-label input { width: auto; cursor: pointer; }
+
   .commit-bar { position: sticky; bottom: 16px; display: flex; align-items: center; gap: 12px; margin-top: 20px; padding: 14px 16px; }
   #commitStatus { font-size: 13px; color: var(--ink-soft); }
 </style>
@@ -91,6 +97,9 @@
     </div>
 
     <h2>新訂單 <span class="chip warn" id="newCount">0 筆</span></h2>
+    <label class="select-all-label" style="margin-bottom:10px; display:inline-flex;">
+      <input type="checkbox" id="selectAllOrders"> 全選匯入
+    </label>
     <div id="orderList"></div>
 
     <div class="panel commit-bar">
@@ -201,7 +210,7 @@
         html += '<option value="">— 選擇正確商品 —</option>';
         it.candidates.forEach(function (c) {
           var sel = it.suggestedId === c.id ? ' selected' : '';
-          html += '<option value="' + c.id + '" data-cost="' + c.cost + '" data-price="' + c.price + '" data-name="' + c.name + '" data-color="' + (c.color || '') + '"' + sel + '>' + (c.color || '(無色)') + ' · ' + fmt(c.price) + '</option>';
+          html += '<option value="' + c.id + '" data-cost="' + c.cost + '" data-price="' + c.price + '" data-name="' + c.name + '" data-color="' + (c.color || '') + '" data-photo="' + (c.photoUrl || '') + '"' + sel + '>' + (c.color || '(無色)') + ' · ' + fmt(c.price) + '</option>';
         });
         html += '<option value="__manual__">自己輸入（不連結商品庫）</option>';
         html += '</select>';
@@ -233,7 +242,30 @@
   function renderNewOrders() {
     $('newCount').textContent = state.newOrders.length + ' 筆';
     $('orderList').innerHTML = state.newOrders.map(orderCardHtml).join('');
+    syncSelectAllCheckbox();
   }
+
+  // 已經匯入成功的訂單不能再勾（checkbox 會被 disable），全選只管還能動的那些。
+  function syncSelectAllCheckbox() {
+    var selectable = state.newOrders.filter(function (o) { return o.importState !== 'done'; });
+    var box = $('selectAllOrders');
+    if (selectable.length === 0) {
+      box.checked = false;
+      box.indeterminate = false;
+      return;
+    }
+    var includedCount = selectable.filter(function (o) { return o.included; }).length;
+    box.checked = includedCount === selectable.length;
+    box.indeterminate = includedCount > 0 && includedCount < selectable.length;
+  }
+
+  $('selectAllOrders').addEventListener('change', function (e) {
+    var checked = e.target.checked;
+    state.newOrders.forEach(function (o) {
+      if (o.importState !== 'done') o.included = checked;
+    });
+    renderNewOrders();
+  });
 
   function handleCandidateSelect(e, it) {
     var opt = e.target.selectedOptions[0];
@@ -245,7 +277,7 @@
       it.resolution = { source: 'manual', name: it.rawName, cost: '', price: it.unitPrice };
     } else {
       it.resolved = true;
-      it.resolution = { source: 'matched', priced_item_id: opt.value, id: opt.value, name: opt.getAttribute('data-name'), color: opt.getAttribute('data-color'), cost: Number(opt.getAttribute('data-cost')), price: Number(opt.getAttribute('data-price')) };
+      it.resolution = { source: 'matched', priced_item_id: opt.value, id: opt.value, name: opt.getAttribute('data-name'), color: opt.getAttribute('data-color'), cost: Number(opt.getAttribute('data-cost')), price: Number(opt.getAttribute('data-price')), photoUrl: opt.getAttribute('data-photo') || null };
     }
     renderNewOrders();
   }
@@ -284,6 +316,7 @@
     if (head && e.target.classList.contains('oc-include') && e.type === 'change') {
       var cardIdx = Number(e.target.closest('.order-card').getAttribute('data-order'));
       state.newOrders[cardIdx].included = e.target.checked;
+      syncSelectAllCheckbox();
     }
   }
 
@@ -299,7 +332,8 @@
         size: src.color || null,
         cost: Number(src.cost) || 0,
         soldPrice: Number(src.price) || 0,
-        productId: src.source === 'manual' ? null : (src.priced_item_id || src.id || null)
+        productId: src.source === 'manual' ? null : (src.priced_item_id || src.id || null),
+        photoUrl: src.source === 'manual' ? null : (src.photoUrl || null)
       };
       for (var q = 0; q < it.qty; q++) rows.push(row);
     });
