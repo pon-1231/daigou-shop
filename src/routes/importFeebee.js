@@ -145,6 +145,52 @@ function orderDateTimeKey(o) {
   return year + '-' + pad(m[1]) + '-' + pad(m[2]) + 'T' + pad(m[3]) + ':' + m[4];
 }
 
+// arr 所有大小 >= 2 的子集合，客人在同一批裡重複下單通常不會超過幾筆，暴力列舉沒問題。
+function subsetsOfSizeTwoPlus(arr) {
+  const result = [];
+  const n = arr.length;
+  for (let mask = 1; mask < (1 << n); mask++) {
+    const subset = [];
+    for (let i = 0; i < n; i++) if (mask & (1 << i)) subset.push(arr[i]);
+    if (subset.length >= 2) result.push(subset);
+  }
+  return result;
+}
+
+/* 疑似「訂單合併」偵測：同一個帳號在這批裡有好幾筆新訂單，如果其中幾筆的金額
+   加總剛好對上系統裡已經記過的某一筆訂單，很可能那筆就是賣貨便後台合併出來的
+   C 訂單，這幾筆是還沒刪除的 A、B。只在「同一個帳號」底下比對，不跨帳號比，
+   避免金額剛好相同但其實無關的訂單被誤判。 */
+function detectMergeSuspects(candidateNew, existingByHandle) {
+  const byHandle = {};
+  candidateNew.forEach((o) => {
+    if (!o.handle) return;
+    (byHandle[o.handle] = byHandle[o.handle] || []).push(o);
+  });
+
+  const result = {};
+  Object.keys(byHandle).forEach((handle) => {
+    const existingList = existingByHandle[handle];
+    const group = byHandle[handle];
+    if (!existingList || !existingList.length || group.length < 2 || group.length > 6) return;
+
+    subsetsOfSizeTwoPlus(group).some((subset) => {
+      const sum = subset.reduce((s, o) => s + o.orderTotal, 0);
+      const match = existingList.find((e) => Math.abs(e.total - sum) < 0.01);
+      if (!match) return false;
+      subset.forEach((o) => {
+        result[o.orderNo] = {
+          intoOrderNo: match.orderNo,
+          combinedWithOrderNos: subset.map((s) => s.orderNo).filter((no) => no !== o.orderNo),
+          combinedTotal: sum
+        };
+      });
+      return true; // 找到一組就夠了，同一個帳號不用窮舉所有可能都標一遍
+    });
+  });
+  return result;
+}
+
 /* feedback1 常常是問卷式文字，例如「您的threads帳號？（...）：ssannn._.9」，
    帳號在最後一個全/半形冒號後面；訂單匯入分頁的「其它資訊」有時就是單純帳號本身。 */
 function parseHandle(raw) {
@@ -252,13 +298,23 @@ router.post('/feebee/parse', (req, res) => {
 
       const { data: existingOrders, error: ordersErr } = await supabase
         .from('orders')
-        .select('customer_name')
+        .select('customer_name, order_items(sold_price)')
         .is('deleted_at', null);
       if (ordersErr) throw ordersErr;
       const existingOrderNos = new Set();
+      // 賣貨便「訂單合併」：客人分兩次下單(A、B)，賣貨便後台會多生一筆合併訂單(C)，
+      // A、B 不會被刪除，匯出檔裡三筆都還在。用「同一個帳號 + 金額加總剛好對得上
+      // 系統裡已經記過的某筆訂單」反推，抓到的話整筆標記讓人工確認，不自動略過也
+      // 不自動匯入——這只是推論，不是賣貨便資料裡有明講的欄位。
+      const existingByHandle = {};
       (existingOrders || []).forEach((o) => {
-        const m = String(o.customer_name || '').match(/CM\d{10,}/);
+        const name = String(o.customer_name || '');
+        const m = name.match(/CM\d{10,}/);
         if (m) existingOrderNos.add(m[0]);
+        const handle = name.split('/')[0].trim();
+        if (!handle || !m) return;
+        const total = (o.order_items || []).reduce((s, it) => s + (Number(it.sold_price) || 0), 0);
+        (existingByHandle[handle] = existingByHandle[handle] || []).push({ orderNo: m[0], total: total });
       });
 
       const { data: priced, error: pricedErr } = await supabase
@@ -281,36 +337,40 @@ router.post('/feebee/parse', (req, res) => {
       const sortedNames = Object.keys(nameIndex).sort((a, b) => b.length - a.length);
 
       const duplicates = [];
-      const newOrders = [];
+      const candidateNew = [];
       grouped.forEach((o) => {
-        const sortKey = orderDateTimeKey(o);
         if (existingOrderNos.has(o.orderNo)) {
-          duplicates.push({ orderNo: o.orderNo, date: o.date, customerMasked: o.customerMasked, itemCount: o.items.length, _sortKey: sortKey });
+          duplicates.push({ orderNo: o.orderNo, date: o.date, customerMasked: o.customerMasked, itemCount: o.items.length, _sortKey: orderDateTimeKey(o) });
           return;
         }
+        o.handle = parseHandle(o.feedback1);
+        o.orderTotal = o.items.reduce((s, it) => s + it.unitPrice * it.qty, 0);
+        candidateNew.push(o);
+      });
+      duplicates.sort((a, b) => (a._sortKey < b._sortKey ? -1 : a._sortKey > b._sortKey ? 1 : 0));
+      duplicates.forEach((d) => { delete d._sortKey; });
+
+      const mergeSuspectByOrderNo = detectMergeSuspects(candidateNew, existingByHandle);
+
+      const newOrders = candidateNew.map((o) => {
         const items = o.items.map((it) => Object.assign({ rawName: it.rawName, qty: it.qty, unitPrice: it.unitPrice }, matchItem(it, priceIndex, nameIndex, sortedNames)));
         const discountAmount = (o.discC || 0) + (o.discD || 0) + (o.discE || 0);
-        newOrders.push({
+        return {
           orderNo: o.orderNo,
           date: o.date,
           customerMasked: o.customerMasked,
-          feedbackHandle: parseHandle(o.feedback1),
+          feedbackHandle: o.handle,
           note: o.note,
           shippingFee: o.shippingFee || 0,
           discountAmount: discountAmount,
           discountReason: discountAmount !== 0 ? '賣貨便折價券/運費券抵扣' : null,
-          orderTotal: o.items.reduce((s, it) => s + it.unitPrice * it.qty, 0),
+          orderTotal: o.orderTotal,
+          mergeSuspect: mergeSuspectByOrderNo[o.orderNo] || null,
           items: items,
-          _sortKey: sortKey
-        });
+          _sortKey: orderDateTimeKey(o)
+        };
       });
-
-      // 賣貨便匯出通常是新的在前面，審核時比較習慣由舊到新一筆一筆往下處理。
-      // 同一天可能有好幾筆訂單，只比日期不夠準，要連「狀態」欄位裡藏的下單時間一起比。
-      function byDateAsc(a, b) { return a._sortKey < b._sortKey ? -1 : a._sortKey > b._sortKey ? 1 : 0; }
-      duplicates.sort(byDateAsc);
-      newOrders.sort(byDateAsc);
-      duplicates.forEach((d) => { delete d._sortKey; });
+      newOrders.sort((a, b) => (a._sortKey < b._sortKey ? -1 : a._sortKey > b._sortKey ? 1 : 0));
       newOrders.forEach((o) => { delete o._sortKey; });
 
       res.json({ sheetsRead, duplicates, newOrders });
