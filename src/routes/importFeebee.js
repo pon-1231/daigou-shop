@@ -149,16 +149,11 @@ function itemNoPrefix(rawName) {
   return { group: m[1].toUpperCase(), itemNo: Number(m[2]), remainder: m[3].trim() };
 }
 
-function matchItem(rawItem, priceIndex) {
-  const prefix = itemNoPrefix(rawItem.rawName);
-  if (!prefix) {
-    return { status: 'needs_review', reason: 'no_prefix', matched: null, suggestedId: null, candidates: [] };
-  }
-  const candidates = priceIndex[prefix.group + ':' + prefix.itemNo] || [];
-  if (candidates.length === 0) {
-    return { status: 'needs_review', reason: 'unknown_item_no', matched: null, suggestedId: null, candidates: [] };
-  }
+function escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
+function buildCandidateMatch(candidates, remainder, unitPrice) {
   const candidateView = candidates.map((c) => ({
     id: c.id,
     name: c.name,
@@ -168,8 +163,8 @@ function matchItem(rawItem, priceIndex) {
     photoUrl: c.photo_url || null
   }));
 
-  const colorMatches = candidateView.filter((c) => c.color && prefix.remainder.includes(c.color));
-  const strongMatches = colorMatches.filter((c) => Math.abs(c.price - rawItem.unitPrice) < 0.01);
+  const colorMatches = candidateView.filter((c) => c.color && remainder.includes(c.color));
+  const strongMatches = colorMatches.filter((c) => Math.abs(c.price - unitPrice) < 0.01);
 
   if (strongMatches.length === 1) {
     return { status: 'matched', reason: null, matched: strongMatches[0], suggestedId: strongMatches[0].id, candidates: candidateView };
@@ -181,6 +176,41 @@ function matchItem(rawItem, priceIndex) {
     return { status: 'needs_review', reason: 'ambiguous_color', matched: null, suggestedId: null, candidates: candidateView };
   }
   return { status: 'needs_review', reason: 'no_color_match', matched: null, suggestedId: null, candidates: candidateView };
+}
+
+/* 不是每個賣場都用「字母+數字」編號（例如 A3.），有些賣場匯出只有純數字
+   編號（2.）甚至完全沒有編號——這種情況退而求其次，去掉開頭可能的純數字
+   編號後，拿剩下的文字跟商品庫的 name 做「最長前綴」比對，比對到了再用
+   一樣的顏色+價格雙訊號判斷，不會因為編號系統不同就直接放棄自動比對。 */
+function matchByName(rawName, unitPrice, nameIndex, sortedNames) {
+  const afterNumPrefix = rawName.replace(/^\d{1,3}[.．]\s*/, '').trim();
+  const nameMatches = [];
+  sortedNames.forEach((name) => {
+    const re = new RegExp('^' + escapeRegex(name).replace(/\s+/g, '\\s*') + '\\s*(.*)$');
+    const m = afterNumPrefix.match(re);
+    if (m) nameMatches.push({ name, remainder: m[1].trim() });
+  });
+  if (nameMatches.length === 0) {
+    return { status: 'needs_review', reason: 'no_prefix', matched: null, suggestedId: null, candidates: [] };
+  }
+  const maxLen = Math.max.apply(null, nameMatches.map((m) => m.name.length));
+  const longest = nameMatches.filter((m) => m.name.length === maxLen);
+  if (longest.length > 1) {
+    return { status: 'needs_review', reason: 'ambiguous_name', matched: null, suggestedId: null, candidates: [] };
+  }
+  return buildCandidateMatch(nameIndex[longest[0].name], longest[0].remainder, unitPrice);
+}
+
+function matchItem(rawItem, priceIndex, nameIndex, sortedNames) {
+  const prefix = itemNoPrefix(rawItem.rawName);
+  if (!prefix) {
+    return matchByName(rawItem.rawName, rawItem.unitPrice, nameIndex, sortedNames);
+  }
+  const candidates = priceIndex[prefix.group + ':' + prefix.itemNo] || [];
+  if (candidates.length === 0) {
+    return { status: 'needs_review', reason: 'unknown_item_no', matched: null, suggestedId: null, candidates: [] };
+  }
+  return buildCandidateMatch(candidates, prefix.remainder, rawItem.unitPrice);
 }
 
 router.post('/feebee/parse', (req, res) => {
@@ -225,11 +255,18 @@ router.post('/feebee/parse', (req, res) => {
         .is('deleted_at', null);
       if (pricedErr) throw pricedErr;
       const priceIndex = {};
+      const nameIndex = {};
       (priced || []).forEach((p) => {
-        if (!p.sort_group || p.item_no == null) return;
-        const key = String(p.sort_group).toUpperCase() + ':' + Number(p.item_no);
-        (priceIndex[key] = priceIndex[key] || []).push(p);
+        if (p.sort_group && p.item_no != null) {
+          const key = String(p.sort_group).toUpperCase() + ':' + Number(p.item_no);
+          (priceIndex[key] = priceIndex[key] || []).push(p);
+        }
+        const name = (p.name || '').trim();
+        if (name) (nameIndex[name] = nameIndex[name] || []).push(p);
       });
+      // 比對時要先試最長的商品名稱，不然短名稱（例如「娃用奶嘴」）會搶先比對到
+      // 其實是另一個更長名稱商品（例如「娃用奶嘴架」）的前綴，比對錯商品。
+      const sortedNames = Object.keys(nameIndex).sort((a, b) => b.length - a.length);
 
       const duplicates = [];
       const newOrders = [];
@@ -238,7 +275,7 @@ router.post('/feebee/parse', (req, res) => {
           duplicates.push({ orderNo: o.orderNo, date: o.date, customerMasked: o.customerMasked, itemCount: o.items.length });
           return;
         }
-        const items = o.items.map((it) => Object.assign({ rawName: it.rawName, qty: it.qty, unitPrice: it.unitPrice }, matchItem(it, priceIndex)));
+        const items = o.items.map((it) => Object.assign({ rawName: it.rawName, qty: it.qty, unitPrice: it.unitPrice }, matchItem(it, priceIndex, nameIndex, sortedNames)));
         const discountAmount = (o.discC || 0) + (o.discD || 0) + (o.discE || 0);
         newOrders.push({
           orderNo: o.orderNo,

@@ -116,11 +116,12 @@
   var state = { duplicates: [], newOrders: [] };
 
   var REASON_LABEL = {
-    no_prefix: '商品名稱沒有編號前綴（例如「A3.」），無法自動定位',
+    no_prefix: '商品庫裡找不到對應的商品（編號跟名稱都比對不到）',
     unknown_item_no: '商品庫裡找不到這個編號',
-    price_mismatch: '顏色對得上，但價格跟商品庫不一致',
+    price_mismatch: '商品對得上，但價格跟商品庫不一致',
     ambiguous_color: '比對到多個顏色候選，無法自動判斷',
-    no_color_match: '找到編號，但顏色對不起來'
+    ambiguous_name: '比對到多個同樣長度的商品名稱候選，無法自動判斷是哪一個',
+    no_color_match: '找到商品，但顏色對不起來'
   };
 
   function showToast(msg) {
