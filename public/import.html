@@ -26,6 +26,10 @@
   .oi-manual-fields input { width: auto; font-size: 12.5px; padding: 6px 8px; }
   .oi-manual-fields input.oi-manual-name { min-width: 180px; }
   .oi-manual-fields input.oi-manual-cost, .oi-manual-fields input.oi-manual-price { width: 90px; }
+  .oi-edit-btn {
+    font-family: var(--font-body); font-size: 11.5px; padding: 3px 9px; border-radius: 999px;
+    border: 1px solid var(--line-strong); background: var(--bg-elevated); color: var(--ink-soft); cursor: pointer;
+  }
 
   .dup-row { display: flex; justify-content: space-between; gap: 10px; padding: 8px 12px; font-size: 12.5px; color: var(--ink-soft); border-bottom: 1px dashed var(--line); }
   .dup-row:last-child { border-bottom: none; }
@@ -175,6 +179,7 @@
           o.items.forEach(function (it) {
             it.resolved = it.status === 'matched';
             it.resolution = it.status === 'matched' ? Object.assign({ source: 'matched' }, it.matched) : null;
+            it.editing = false;
           });
           o.included = true;
           o.importState = null; // null | 'done' | 'error'
@@ -209,20 +214,24 @@
 
   function itemRowHtml(orderIdx, itemIdx, it) {
     var flagged = it.status !== 'matched';
+    var showEditor = flagged || it.editing;
     var rowClass = 'oi-row ' + (flagged ? 'flag' : 'ok') + (it.resolved ? ' resolved' : '');
     var html = '<div class="' + rowClass + '" data-order="' + orderIdx + '" data-item="' + itemIdx + '">';
-    if (it.status === 'matched') {
+
+    if (!showEditor) {
       html += '<span>✓ ' + it.matched.name + (it.matched.color ? '（' + it.matched.color + '）' : '') + '</span>';
+      html += '<button type="button" class="oi-edit-btn">編輯</button>';
     } else {
-      html += '<div class="oi-raw">⚠「' + it.rawName + '」：' + (REASON_LABEL[it.reason] || '需要確認') + (it.resolved ? ' → 已處理' : '') + '</div>';
+      if (flagged) html += '<div class="oi-raw">⚠「' + it.rawName + '」：' + (REASON_LABEL[it.reason] || '需要確認') + (it.resolved ? ' → 已處理' : '') + '</div>';
+      var currentId = (it.resolution && (it.resolution.priced_item_id || it.resolution.id)) || it.suggestedId;
       if (it.candidates.length > 0) {
         html += '<select class="oi-candidate-select">';
         html += '<option value="">— 選擇正確商品 —</option>';
         it.candidates.forEach(function (c) {
-          var sel = it.suggestedId === c.id ? ' selected' : '';
+          var sel = currentId === c.id ? ' selected' : '';
           html += '<option value="' + c.id + '" data-cost="' + c.cost + '" data-price="' + c.price + '" data-name="' + c.name + '" data-color="' + (c.color || '') + '" data-photo="' + (c.photoUrl || '') + '"' + sel + '>' + (c.color || '(無色)') + ' · ' + fmt(c.price) + '</option>';
         });
-        html += '<option value="__manual__">自己輸入（不連結商品庫）</option>';
+        html += '<option value="__manual__"' + (it.resolution && it.resolution.source === 'manual' ? ' selected' : '') + '>自己輸入（不連結商品庫）</option>';
         html += '</select>';
       }
       var showManual = it.candidates.length === 0 || (it.resolution && it.resolution.source === 'manual');
@@ -333,6 +342,12 @@
         handleManualField(row, it);
         return;
       }
+
+      if (e.target.classList.contains('oi-edit-btn') && e.type === 'click') {
+        it.editing = true;
+        renderNewOrders();
+        return;
+      }
     }
 
     var head = e.target.closest('.oc-head');
@@ -353,11 +368,12 @@
 
   $('orderList').addEventListener('change', onOrderListEvent);
   $('orderList').addEventListener('input', onOrderListEvent);
+  $('orderList').addEventListener('click', onOrderListEvent);
 
   function buildItemsPayload(order) {
     var rows = [];
     order.items.forEach(function (it) {
-      var src = it.status === 'matched' ? it.matched : it.resolution;
+      var src = it.resolution;
       var row = {
         itemName: src.name,
         size: src.color || null,
