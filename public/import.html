@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>匯入訂單 · NAN｜推し研究所</title>
+<link rel="stylesheet" href="/shared.css">
+<style>
+  .order-card { margin-bottom: 14px; }
+  .order-card .oc-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .order-card .oc-head label { display: flex; align-items: center; gap: 7px; margin: 0; cursor: pointer; }
+  .order-card .oc-head input[type="checkbox"] { width: auto; cursor: pointer; }
+  .order-card .oc-meta { font-family: var(--font-mono); color: var(--ink-soft); font-size: 12px; white-space: nowrap; }
+  .order-card.imported { opacity: 0.55; }
+  .order-card.import-error { border-color: var(--bad); }
+
+  .oi-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 10px; border-radius: var(--radius-sm); margin-top: 8px; font-size: 13px; }
+  .oi-row.ok { background: var(--bg); }
+  .oi-row.flag { background: var(--bad-soft); border: 1px solid var(--bad); }
+  .oi-row.flag.resolved { background: var(--good-soft); border: 1px solid var(--good); }
+  .oi-row .oi-raw { flex: 1 1 100%; font-size: 12px; color: var(--bad); }
+  .oi-row.resolved .oi-raw { color: var(--good); }
+  .oi-row select { width: auto; font-size: 12.5px; padding: 6px 8px; }
+  .oi-row .oi-nums { font-family: var(--font-mono); color: var(--ink-soft); white-space: nowrap; margin-left: auto; }
+  .oi-manual-fields { display: flex; gap: 6px; flex-wrap: wrap; }
+  .oi-manual-fields input { width: auto; font-size: 12.5px; padding: 6px 8px; }
+  .oi-manual-fields input.oi-manual-name { min-width: 180px; }
+  .oi-manual-fields input.oi-manual-cost, .oi-manual-fields input.oi-manual-price { width: 90px; }
+
+  .dup-row { display: flex; justify-content: space-between; gap: 10px; padding: 8px 12px; font-size: 12.5px; color: var(--ink-soft); border-bottom: 1px dashed var(--line); }
+  .dup-row:last-child { border-bottom: none; }
+
+  .commit-bar { position: sticky; bottom: 16px; display: flex; align-items: center; gap: 12px; margin-top: 20px; padding: 14px 16px; }
+  #commitStatus { font-size: 13px; color: var(--ink-soft); }
+</style>
+</head>
+<body>
+<div class="page">
+  <nav class="topnav">
+    <div class="brand">📦 NAN｜推し研究所 代購賣場工具</div>
+    <div class="tabs">
+      <a href="/pricing.html">定價計算機</a>
+      <a href="/records.html">銷售紀錄</a>
+      <a href="/stock.html">庫存管理</a>
+      <a href="/import.html" class="active">匯入訂單</a>
+    </div>
+    <div class="right">
+      <form method="POST" action="/logout" style="margin:0;">
+        <button type="submit" class="btn small">登出</button>
+      </form>
+    </div>
+  </nav>
+
+  <h1>匯入訂單</h1>
+  <p class="sub">上傳賣貨便匯出的 Excel，系統會自動比對哪些訂單已經key過（略過不動）、哪些是新的。商品比對得上編號+顏色+價格的會直接標記可匯入；比對不上的會用紅字標出來，你可以手動選正確的商品或自己輸入，確認沒問題後才會真正寫入訂單。</p>
+
+  <div class="panel panel-pad" id="uploadPanel">
+    <div class="field">
+      <label for="fileInput">賣貨便匯出的 Excel 檔（.xlsx）</label>
+      <input type="file" id="fileInput" accept=".xlsx">
+    </div>
+    <button class="btn primary" id="parseBtn">解析檔案</button>
+    <span id="parseStatus" class="sub" style="margin:10px 0 0; display:none;"></span>
+    <div class="field-error show" id="uploadError" style="display:none;"></div>
+  </div>
+
+  <div id="reviewSection" style="display:none; margin-top:20px;">
+    <div class="panel panel-pad" style="margin-bottom:16px;">
+      <h2>批次預設值</h2>
+      <p class="sub" style="margin-bottom:14px;">套用到這次所有「新訂單」，匯入前都可以調整。</p>
+      <div class="field-grid">
+        <div class="field">
+          <label for="defaultStatus">訂單狀態</label>
+          <select id="defaultStatus">
+            <option value="待處理">待處理</option>
+            <option value="已下貨" selected>已下貨</option>
+            <option value="已出貨">已出貨</option>
+            <option value="已完成">已完成</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="shipDays">出貨天數（訂購日 + N 天 = 出貨期限）</label>
+          <input type="number" id="shipDays" value="21" min="0">
+        </div>
+      </div>
+    </div>
+
+    <div class="panel panel-pad" style="margin-bottom:16px;">
+      <h2>已存在系統裡，略過 <span class="chip good" id="dupCount">0 筆</span></h2>
+      <div id="dupList" class="empty-state">—</div>
+    </div>
+
+    <h2>新訂單 <span class="chip warn" id="newCount">0 筆</span></h2>
+    <div id="orderList"></div>
+
+    <div class="panel commit-bar">
+      <button class="btn primary" id="commitBtn">確認匯入已勾選的訂單</button>
+      <span id="commitStatus"></span>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<script>
+  var $ = function (id) { return document.getElementById(id); };
+  var state = { duplicates: [], newOrders: [] };
+
+  var REASON_LABEL = {
+    no_prefix: '商品名稱沒有編號前綴（例如「A3.」），無法自動定位',
+    unknown_item_no: '商品庫裡找不到這個編號',
+    price_mismatch: '顏色對得上，但價格跟商品庫不一致',
+    ambiguous_color: '比對到多個顏色候選，無法自動判斷',
+    no_color_match: '找到編號，但顏色對不起來'
+  };
+
+  function showToast(msg) {
+    var t = $('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(function () { t.classList.remove('show'); }, 3200);
+  }
+
+  function fmt(n) { return 'NT$' + (Number(n) || 0).toLocaleString(); }
+
+  function addDays(dateStr, days) {
+    var d = new Date(dateStr + 'T00:00:00');
+    d.setDate(d.getDate() + (Number(days) || 0));
+    return d.toISOString().slice(0, 10);
+  }
+
+  $('parseBtn').addEventListener('click', function () {
+    var file = $('fileInput').files[0];
+    $('uploadError').style.display = 'none';
+    if (!file) {
+      $('uploadError').textContent = '請先選擇檔案';
+      $('uploadError').style.display = 'block';
+      return;
+    }
+    var fd = new FormData();
+    fd.append('file', file);
+    $('parseBtn').disabled = true;
+    $('parseStatus').style.display = 'inline';
+    $('parseStatus').textContent = '解析中…';
+    fetch('/api/import/feebee/parse', { method: 'POST', body: fd })
+      .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+      .then(function (res) {
+        $('parseBtn').disabled = false;
+        $('parseStatus').style.display = 'none';
+        if (!res.ok) {
+          $('uploadError').textContent = res.data.error || '解析失敗';
+          $('uploadError').style.display = 'block';
+          return;
+        }
+        state.duplicates = res.data.duplicates || [];
+        state.newOrders = (res.data.newOrders || []).map(function (o) {
+          o.items.forEach(function (it) {
+            it.resolved = it.status === 'matched';
+            it.resolution = it.status === 'matched' ? Object.assign({ source: 'matched' }, it.matched) : null;
+          });
+          o.included = true;
+          o.importState = null; // null | 'done' | 'error'
+          return o;
+        });
+        renderDuplicates();
+        renderNewOrders();
+        $('reviewSection').style.display = 'block';
+      })
+      .catch(function (err) {
+        $('parseBtn').disabled = false;
+        $('parseStatus').style.display = 'none';
+        $('uploadError').textContent = '解析失敗：' + err.message;
+        $('uploadError').style.display = 'block';
+      });
+  });
+
+  function renderDuplicates() {
+    $('dupCount').textContent = state.duplicates.length + ' 筆';
+    var el = $('dupList');
+    if (state.duplicates.length === 0) {
+      el.className = 'empty-state';
+      el.textContent = '沒有重複的訂單';
+      return;
+    }
+    el.className = '';
+    el.innerHTML = state.duplicates.map(function (d) {
+      return '<div class="dup-row"><span>' + d.orderNo + ' · ' + (d.customerMasked || '') + ' · ' + d.date + '</span><span>' + d.itemCount + ' 樣商品</span></div>';
+    }).join('');
+  }
+
+  function itemRowHtml(orderIdx, itemIdx, it) {
+    var flagged = it.status !== 'matched';
+    var rowClass = 'oi-row ' + (flagged ? 'flag' : 'ok') + (it.resolved ? ' resolved' : '');
+    var html = '<div class="' + rowClass + '" data-order="' + orderIdx + '" data-item="' + itemIdx + '">';
+    if (it.status === 'matched') {
+      html += '<span>✓ ' + it.matched.name + (it.matched.color ? '（' + it.matched.color + '）' : '') + '</span>';
+    } else {
+      html += '<div class="oi-raw">⚠「' + it.rawName + '」：' + (REASON_LABEL[it.reason] || '需要確認') + (it.resolved ? ' → 已處理' : '') + '</div>';
+      if (it.candidates.length > 0) {
+        html += '<select class="oi-candidate-select">';
+        html += '<option value="">— 選擇正確商品 —</option>';
+        it.candidates.forEach(function (c) {
+          var sel = it.suggestedId === c.id ? ' selected' : '';
+          html += '<option value="' + c.id + '" data-cost="' + c.cost + '" data-price="' + c.price + '" data-name="' + c.name + '" data-color="' + (c.color || '') + '"' + sel + '>' + (c.color || '(無色)') + ' · ' + fmt(c.price) + '</option>';
+        });
+        html += '<option value="__manual__">自己輸入（不連結商品庫）</option>';
+        html += '</select>';
+      }
+      var showManual = it.candidates.length === 0 || (it.resolution && it.resolution.source === 'manual');
+      html += '<div class="oi-manual-fields" style="' + (showManual ? '' : 'display:none;') + '">';
+      html += '<input type="text" class="oi-manual-name" placeholder="商品名稱" value="' + (it.resolution && it.resolution.name || it.rawName).replace(/"/g, '&quot;') + '">';
+      html += '<input type="number" class="oi-manual-cost" placeholder="成本" value="' + (it.resolution ? it.resolution.cost : '') + '">';
+      html += '<input type="number" class="oi-manual-price" placeholder="售價" value="' + (it.resolution ? it.resolution.price : it.unitPrice) + '">';
+      html += '</div>';
+    }
+    html += '<span class="oi-nums">x' + it.qty + ' · ' + fmt(it.unitPrice) + '</span>';
+    html += '</div>';
+    return html;
+  }
+
+  function orderCardHtml(o, idx) {
+    var statusCls = o.importState === 'done' ? 'imported' : (o.importState === 'error' ? 'import-error' : '');
+    var html = '<div class="panel panel-pad order-card ' + statusCls + '" data-order="' + idx + '">';
+    html += '<div class="oc-head">';
+    html += '<label><input type="checkbox" class="oc-include" ' + (o.included ? 'checked' : '') + (o.importState === 'done' ? ' disabled' : '') + '> <strong>' + (o.feedbackHandle || o.customerMasked || '(無暱稱)') + '</strong> <span class="chip info">' + o.orderNo + '</span></label>';
+    html += '<span class="oc-meta">' + o.date + ' · 共 ' + fmt(o.orderTotal) + (o.importState === 'done' ? ' · 已匯入' : (o.importState === 'error' ? ' · 匯入失敗：' + (o.importError || '') : '')) + '</span>';
+    html += '</div>';
+    o.items.forEach(function (it, i) { html += itemRowHtml(idx, i, it); });
+    html += '</div>';
+    return html;
+  }
+
+  function renderNewOrders() {
+    $('newCount').textContent = state.newOrders.length + ' 筆';
+    $('orderList').innerHTML = state.newOrders.map(orderCardHtml).join('');
+  }
+
+  function handleCandidateSelect(e, it) {
+    var opt = e.target.selectedOptions[0];
+    if (!opt || !opt.value) {
+      it.resolved = false;
+      it.resolution = null;
+    } else if (opt.value === '__manual__') {
+      it.resolved = false;
+      it.resolution = { source: 'manual', name: it.rawName, cost: '', price: it.unitPrice };
+    } else {
+      it.resolved = true;
+      it.resolution = { source: 'matched', priced_item_id: opt.value, id: opt.value, name: opt.getAttribute('data-name'), color: opt.getAttribute('data-color'), cost: Number(opt.getAttribute('data-cost')), price: Number(opt.getAttribute('data-price')) };
+    }
+    renderNewOrders();
+  }
+
+  // 手動輸入欄位故意同時聽 input + change：change 要等失焦才會觸發，使用者填完
+  // 直接點「確認匯入」有時候來不及先失焦，resolved 狀態會跟畫面對不起來。
+  function handleManualField(row, it) {
+    if (!it.resolution || it.resolution.source !== 'manual') it.resolution = { source: 'manual' };
+    it.resolution.source = 'manual';
+    it.resolution.name = row.querySelector('.oi-manual-name').value.trim();
+    it.resolution.cost = Number(row.querySelector('.oi-manual-cost').value) || 0;
+    it.resolution.price = Number(row.querySelector('.oi-manual-price').value) || 0;
+    it.resolved = !!it.resolution.name;
+    row.classList.toggle('resolved', it.resolved);
+  }
+
+  function onOrderListEvent(e) {
+    var row = e.target.closest('.oi-row');
+    if (row) {
+      var oIdx = Number(row.getAttribute('data-order'));
+      var iIdx = Number(row.getAttribute('data-item'));
+      var it = state.newOrders[oIdx].items[iIdx];
+
+      if (e.target.classList.contains('oi-candidate-select')) {
+        if (e.type === 'change') handleCandidateSelect(e, it);
+        return;
+      }
+
+      if (e.target.classList.contains('oi-manual-name') || e.target.classList.contains('oi-manual-cost') || e.target.classList.contains('oi-manual-price')) {
+        handleManualField(row, it);
+        return;
+      }
+    }
+
+    var head = e.target.closest('.oc-head');
+    if (head && e.target.classList.contains('oc-include') && e.type === 'change') {
+      var cardIdx = Number(e.target.closest('.order-card').getAttribute('data-order'));
+      state.newOrders[cardIdx].included = e.target.checked;
+    }
+  }
+
+  $('orderList').addEventListener('change', onOrderListEvent);
+  $('orderList').addEventListener('input', onOrderListEvent);
+
+  function buildItemsPayload(order) {
+    var rows = [];
+    order.items.forEach(function (it) {
+      var src = it.status === 'matched' ? it.matched : it.resolution;
+      var row = {
+        itemName: src.name,
+        size: src.color || null,
+        cost: Number(src.cost) || 0,
+        soldPrice: Number(src.price) || 0,
+        productId: src.source === 'manual' ? null : (src.priced_item_id || src.id || null)
+      };
+      for (var q = 0; q < it.qty; q++) rows.push(row);
+    });
+    return rows;
+  }
+
+  $('commitBtn').addEventListener('click', function () {
+    var toSend = state.newOrders.filter(function (o) { return o.included && o.importState !== 'done'; });
+    if (toSend.length === 0) {
+      showToast('沒有勾選要匯入的訂單');
+      return;
+    }
+    var unresolved = toSend.filter(function (o) { return o.items.some(function (it) { return !it.resolved; }); });
+    if (unresolved.length > 0) {
+      showToast('還有 ' + unresolved.length + ' 筆訂單的商品沒有確認完，請先處理紅字的部分');
+      return;
+    }
+
+    var shipDays = Number($('shipDays').value) || 0;
+    var defaultStatus = $('defaultStatus').value;
+    $('commitBtn').disabled = true;
+
+    var done = 0, failed = 0;
+    function next(i) {
+      if (i >= toSend.length) {
+        $('commitBtn').disabled = false;
+        $('commitStatus').textContent = '完成：成功 ' + done + ' 筆 / 失敗 ' + failed + ' 筆';
+        renderNewOrders();
+        return;
+      }
+      var order = toSend[i];
+      $('commitStatus').textContent = '匯入中… (' + (i + 1) + '/' + toSend.length + ')';
+
+      var fd = new FormData();
+      var customerName = (order.feedbackHandle || order.customerMasked || '') + '/' + order.orderNo;
+      fd.append('customerName', customerName);
+      fd.append('orderStatus', defaultStatus);
+      fd.append('shipBy', addDays(order.date, shipDays));
+      fd.append('shippingFee', order.shippingFee || 0);
+      fd.append('note', order.note || '');
+      fd.append('soldAt', order.date);
+      fd.append('discountAmount', order.discountAmount || 0);
+      fd.append('discountReason', order.discountReason || '');
+      fd.append('items', JSON.stringify(buildItemsPayload(order)));
+
+      fetch('/api/orders', { method: 'POST', body: fd })
+        .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+        .then(function (res) {
+          if (res.ok) { order.importState = 'done'; done++; }
+          else { order.importState = 'error'; order.importError = res.data.error || '未知錯誤'; failed++; }
+          next(i + 1);
+        })
+        .catch(function (err) {
+          order.importState = 'error';
+          order.importError = err.message;
+          failed++;
+          next(i + 1);
+        });
+    }
+    next(0);
+  });
+</script>
+</body>
+</html>

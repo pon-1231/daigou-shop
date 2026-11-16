@@ -9,6 +9,7 @@ const ordersRouter = require('./src/routes/orders');
 const stockRouter = require('./src/routes/stock');
 const uploadsRouter = require('./src/routes/uploads');
 const exportRouter = require('./src/routes/exportExcel');
+const importFeebeeRouter = require('./src/routes/importFeebee');
 
 const app = express();
 const PORT = process.env.PORT || 3100;
@@ -58,6 +59,7 @@ app.use('/api/orders', ordersRouter);
 app.use('/api/stock', stockRouter);
 app.use('/api/uploads', uploadsRouter);
 app.use('/api/export', exportRouter);
+app.use('/api/import', importFeebeeRouter);
 
 app.use(express.static(path.join(__dirname, 'public')));
 
