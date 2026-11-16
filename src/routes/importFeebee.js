@@ -291,6 +291,11 @@ router.post('/feebee/parse', (req, res) => {
         });
       });
 
+      // 賣貨便匯出通常是新的在前面，審核時比較習慣由舊到新一筆一筆往下處理。
+      function byDateAsc(a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; }
+      duplicates.sort(byDateAsc);
+      newOrders.sort(byDateAsc);
+
       res.json({ sheetsRead, duplicates, newOrders });
     } catch (err) {
       res.status(500).json({ error: err.message });
