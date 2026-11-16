@@ -346,6 +346,16 @@
   .trash-item .ti-name { font-size: 13.5px; font-weight: 600; color: var(--ink-soft); }
   .trash-item .ti-sub { font-size: 11.5px; color: var(--ink-soft); margin-top: 2px; font-family: var(--font-mono); }
   .trash-item .ti-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+  /* 疊成一欄之後（.layout 同一個 900px 斷點），表單不用再固定在頂端；訂單列表
+     也不該鎖在螢幕 78% 高度裡自己捲，不然在手機上要先滑過整個落落長的表單，
+     列表本身又是另一層小捲軸，體驗很差，像是看不到訂單。放在 <style> 最後面
+     是故意的：跟前面 .form-panel / .order-list 的基本樣式同權重，CSS 比的是
+     「誰寫在後面」，寫在媒體查詢裡面不會自動贏。 */
+  @media (max-width: 900px) {
+    .form-panel { position: static; }
+    .order-list { max-height: none; overflow-y: visible; }
+  }
 </style>
 </head>
 <body>
