@@ -113,6 +113,7 @@ function groupIntoOrders(rows) {
       byOrderNo[r.orderNo] = {
         orderNo: r.orderNo,
         date: r.orderDate.replace(/\//g, '-'),
+        status: r.status,
         customerMasked: r.customerMasked,
         feedback1: r.feedback1,
         note: r.note,
@@ -131,6 +132,17 @@ function groupIntoOrders(rows) {
     });
   });
   return order;
+}
+
+/* 「訂購日期」欄位只有日期，實際下單時間藏在「狀態」欄位裡，例如
+   「訂單成立\n(11/15 23:46)\n」。同一天常常有好幾筆訂單，只比日期的話
+   同一天的訂單還是會照檔案原本的順序（賣貨便通常新的在前），排序排不準。 */
+function orderDateTimeKey(o) {
+  const m = String(o.status || '').match(/\((\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2})\)/);
+  if (!m) return o.date + 'T00:00';
+  const pad = (s) => String(s).padStart(2, '0');
+  const year = o.date.slice(0, 4);
+  return year + '-' + pad(m[1]) + '-' + pad(m[2]) + 'T' + pad(m[3]) + ':' + m[4];
 }
 
 /* feedback1 常常是問卷式文字，例如「您的threads帳號？（...）：ssannn._.9」，
@@ -271,8 +283,9 @@ router.post('/feebee/parse', (req, res) => {
       const duplicates = [];
       const newOrders = [];
       grouped.forEach((o) => {
+        const sortKey = orderDateTimeKey(o);
         if (existingOrderNos.has(o.orderNo)) {
-          duplicates.push({ orderNo: o.orderNo, date: o.date, customerMasked: o.customerMasked, itemCount: o.items.length });
+          duplicates.push({ orderNo: o.orderNo, date: o.date, customerMasked: o.customerMasked, itemCount: o.items.length, _sortKey: sortKey });
           return;
         }
         const items = o.items.map((it) => Object.assign({ rawName: it.rawName, qty: it.qty, unitPrice: it.unitPrice }, matchItem(it, priceIndex, nameIndex, sortedNames)));
@@ -287,14 +300,18 @@ router.post('/feebee/parse', (req, res) => {
           discountAmount: discountAmount,
           discountReason: discountAmount !== 0 ? '賣貨便折價券/運費券抵扣' : null,
           orderTotal: o.items.reduce((s, it) => s + it.unitPrice * it.qty, 0),
-          items: items
+          items: items,
+          _sortKey: sortKey
         });
       });
 
       // 賣貨便匯出通常是新的在前面，審核時比較習慣由舊到新一筆一筆往下處理。
-      function byDateAsc(a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; }
+      // 同一天可能有好幾筆訂單，只比日期不夠準，要連「狀態」欄位裡藏的下單時間一起比。
+      function byDateAsc(a, b) { return a._sortKey < b._sortKey ? -1 : a._sortKey > b._sortKey ? 1 : 0; }
       duplicates.sort(byDateAsc);
       newOrders.sort(byDateAsc);
+      duplicates.forEach((d) => { delete d._sortKey; });
+      newOrders.forEach((o) => { delete o._sortKey; });
 
       res.json({ sheetsRead, duplicates, newOrders });
     } catch (err) {
