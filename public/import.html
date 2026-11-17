@@ -247,7 +247,7 @@
       html += '<input type="number" class="oi-added-qty" value="' + it.qty + '" min="1" title="數量">';
       html += '<button type="button" class="oi-remove-btn">移除</button>';
     } else {
-      html += '<div class="oi-raw">⚠「' + it.rawName + '」：' + (REASON_LABEL[it.reason] || '需要確認') + (it.resolved ? ' → 已處理' : '') + '</div>';
+      html += '<div class="oi-raw">' + (it.resolved ? '✓「' + it.rawName + '」：已確認' : '⚠「' + it.rawName + '」：' + (REASON_LABEL[it.reason] || '需要確認')) + '</div>';
       var currentId = (it.resolution && (it.resolution.priced_item_id || it.resolution.id)) || it.suggestedId;
       if (it.candidates.length > 0) {
         html += '<select class="oi-candidate-select">';
