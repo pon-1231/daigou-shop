@@ -26,10 +26,15 @@
   .oi-manual-fields input { width: auto; font-size: 12.5px; padding: 6px 8px; }
   .oi-manual-fields input.oi-manual-name { min-width: 180px; }
   .oi-manual-fields input.oi-manual-cost, .oi-manual-fields input.oi-manual-price { width: 90px; }
-  .oi-edit-btn {
+  .oi-edit-btn, .oi-remove-btn, .oc-add-item {
     font-family: var(--font-body); font-size: 11.5px; padding: 3px 9px; border-radius: 999px;
     border: 1px solid var(--line-strong); background: var(--bg-elevated); color: var(--ink-soft); cursor: pointer;
   }
+  .oi-remove-btn { color: var(--bad); border-color: var(--bad); }
+  .oc-add-item { margin-top: 10px; border-style: dashed; }
+  .oi-row input.oi-catalog-search { min-width: 160px; width: auto; font-size: 12.5px; padding: 6px 8px; }
+  .oi-row select.oi-catalog-results { min-width: 220px; }
+  .oi-row input.oi-added-qty { width: 50px; font-size: 12.5px; padding: 6px 4px; text-align: center; }
 
   .dup-row { display: flex; justify-content: space-between; gap: 10px; padding: 8px 12px; font-size: 12.5px; color: var(--ink-soft); border-bottom: 1px dashed var(--line); }
   .dup-row:last-child { border-bottom: none; }
@@ -125,7 +130,7 @@
 
 <script>
   var $ = function (id) { return document.getElementById(id); };
-  var state = { duplicates: [], newOrders: [] };
+  var state = { duplicates: [], newOrders: [], catalog: [] };
 
   var REASON_LABEL = {
     no_prefix: '商品庫裡找不到對應的商品（編號跟名稱都比對不到）',
@@ -175,11 +180,13 @@
           return;
         }
         state.duplicates = res.data.duplicates || [];
+        state.catalog = res.data.catalog || [];
         state.newOrders = (res.data.newOrders || []).map(function (o) {
           o.items.forEach(function (it) {
             it.resolved = it.status === 'matched';
             it.resolution = it.status === 'matched' ? Object.assign({ source: 'matched' }, it.matched) : null;
             it.editing = false;
+            it.addedManually = false;
           });
           o.included = true;
           o.importState = null; // null | 'done' | 'error'
@@ -221,8 +228,26 @@
     if (!showEditor) {
       html += '<span>✓ ' + it.matched.name + (it.matched.color ? '（' + it.matched.color + '）' : '') + '</span>';
       html += '<button type="button" class="oi-edit-btn">編輯</button>';
+    } else if (it.addedManually) {
+      html += '<div class="oi-raw">' + (it.resolved ? '✓ 已選好這筆手動加的商品' : '⚠ 手動加的商品，請搜尋商品庫或自己輸入') + '</div>';
+      html += '<input type="text" class="oi-catalog-search" placeholder="搜尋商品名稱…（例如：飛機盒）">';
+      html += '<select class="oi-candidate-select oi-catalog-results">';
+      html += '<option value="">— 輸入左邊關鍵字搜尋 —</option>';
+      if (it.resolution && it.resolution.source === 'matched') {
+        html += '<option value="' + it.resolution.id + '" data-cost="' + it.resolution.cost + '" data-price="' + it.resolution.price + '" data-name="' + it.resolution.name + '" data-color="' + (it.resolution.color || '') + '" data-photo="' + (it.resolution.photoUrl || '') + '" selected>' + it.resolution.name + (it.resolution.color ? '（' + it.resolution.color + '）' : '') + ' · ' + fmt(it.resolution.price) + '</option>';
+      }
+      html += '<option value="__manual__"' + (it.resolution && it.resolution.source === 'manual' ? ' selected' : '') + '>自己輸入（不連結商品庫）</option>';
+      html += '</select>';
+      var showManualAdd = it.resolution && it.resolution.source === 'manual';
+      html += '<div class="oi-manual-fields" style="' + (showManualAdd ? '' : 'display:none;') + '">';
+      html += '<input type="text" class="oi-manual-name" placeholder="商品名稱" value="' + ((it.resolution && it.resolution.name) || '').replace(/"/g, '&quot;') + '">';
+      html += '<input type="number" class="oi-manual-cost" placeholder="成本" value="' + (it.resolution ? it.resolution.cost : '') + '">';
+      html += '<input type="number" class="oi-manual-price" placeholder="售價" value="' + (it.resolution ? it.resolution.price : '') + '">';
+      html += '</div>';
+      html += '<input type="number" class="oi-added-qty" value="' + it.qty + '" min="1" title="數量">';
+      html += '<button type="button" class="oi-remove-btn">移除</button>';
     } else {
-      if (flagged) html += '<div class="oi-raw">⚠「' + it.rawName + '」：' + (REASON_LABEL[it.reason] || '需要確認') + (it.resolved ? ' → 已處理' : '') + '</div>';
+      html += '<div class="oi-raw">⚠「' + it.rawName + '」：' + (REASON_LABEL[it.reason] || '需要確認') + (it.resolved ? ' → 已處理' : '') + '</div>';
       var currentId = (it.resolution && (it.resolution.priced_item_id || it.resolution.id)) || it.suggestedId;
       if (it.candidates.length > 0) {
         html += '<select class="oi-candidate-select">';
@@ -241,7 +266,7 @@
       html += '<input type="number" class="oi-manual-price" placeholder="售價" value="' + (it.resolution ? it.resolution.price : it.unitPrice) + '">';
       html += '</div>';
     }
-    html += '<span class="oi-nums">x' + it.qty + ' · ' + fmt(it.unitPrice) + '</span>';
+    if (!it.addedManually) html += '<span class="oi-nums">x' + it.qty + ' · ' + fmt(it.unitPrice) + '</span>';
     html += '</div>';
     return html;
   }
@@ -258,15 +283,24 @@
     return html;
   }
 
+  // 新增/刪除/改數量後訂單總額要跟著動，不能一直沿用解析當下算好的 orderTotal。
+  function currentOrderTotal(o) {
+    return o.items.reduce(function (s, it) {
+      var price = it.addedManually ? (it.resolution ? Number(it.resolution.price) || 0 : 0) : it.unitPrice;
+      return s + price * it.qty;
+    }, 0);
+  }
+
   function orderCardHtml(o, idx) {
     var statusCls = o.importState === 'done' ? 'imported' : (o.importState === 'error' ? 'import-error' : '');
     var html = '<div class="panel panel-pad order-card ' + statusCls + '" data-order="' + idx + '">';
     html += '<div class="oc-head">';
     html += '<label><input type="checkbox" class="oc-include" ' + (o.included ? 'checked' : '') + (o.importState === 'done' ? ' disabled' : '') + '> <strong>' + (o.feedbackHandle || o.customerMasked || '(無暱稱)') + '</strong> <span class="chip info">' + o.orderNo + '</span></label>';
-    html += '<span class="oc-meta">' + o.date + ' · 共 ' + fmt(o.orderTotal) + (o.importState === 'done' ? ' · 已匯入' : (o.importState === 'error' ? ' · 匯入失敗：' + (o.importError || '') : '')) + '</span>';
+    html += '<span class="oc-meta">' + o.date + ' · 共 ' + fmt(currentOrderTotal(o)) + (o.importState === 'done' ? ' · 已匯入' : (o.importState === 'error' ? ' · 匯入失敗：' + (o.importError || '') : '')) + '</span>';
     html += '</div>';
     if (o.mergeSuspect) html += mergeWarningHtml(idx, o);
     o.items.forEach(function (it, i) { html += itemRowHtml(idx, i, it); });
+    if (o.importState !== 'done') html += '<button type="button" class="oc-add-item" data-order="' + idx + '">+ 新增商品（例如飛機盒等包材）</button>';
     html += '</div>';
     return html;
   }
@@ -348,6 +382,38 @@
         renderNewOrders();
         return;
       }
+
+      // 搜尋框故意不整個 re-render：重畫會把這個 input 整個換掉，打字打到一半
+      // 游標跟焦點都會不見。改成直接操作旁邊那顆 <select> 的 options。
+      if (e.target.classList.contains('oi-catalog-search') && e.type === 'input') {
+        updateCatalogResults(row, e.target.value, it);
+        return;
+      }
+
+      if (e.target.classList.contains('oi-added-qty') && e.type === 'change') {
+        it.qty = Math.max(1, Math.round(Number(e.target.value)) || 1);
+        renderNewOrders();
+        return;
+      }
+
+      if (e.target.classList.contains('oi-remove-btn') && e.type === 'click') {
+        var order = state.newOrders[oIdx];
+        order.items.splice(iIdx, 1);
+        renderNewOrders();
+        return;
+      }
+    }
+
+    var addBtn = e.target.closest('.oc-add-item');
+    if (addBtn && e.type === 'click') {
+      var addOrderIdx = Number(addBtn.getAttribute('data-order'));
+      state.newOrders[addOrderIdx].items.push({
+        rawName: '', qty: 1, unitPrice: 0,
+        status: 'needs_review', reason: null, matched: null, suggestedId: null, candidates: [],
+        resolved: false, resolution: null, editing: true, addedManually: true
+      });
+      renderNewOrders();
+      return;
     }
 
     var head = e.target.closest('.oc-head');
@@ -364,6 +430,22 @@
       state.newOrders[wIdx].mergeAcknowledged = e.target.checked;
       warning.classList.toggle('acked', e.target.checked);
     }
+  }
+
+  function updateCatalogResults(row, term, it) {
+    var select = row.querySelector('.oi-catalog-results');
+    term = term.trim().toLowerCase();
+    var currentId = it.resolution && it.resolution.source === 'matched' ? it.resolution.id : null;
+    var matches = term
+      ? state.catalog.filter(function (c) { return (c.name + c.variant).toLowerCase().indexOf(term) !== -1; }).slice(0, 30)
+      : [];
+    var html = '<option value="">— ' + (term ? '符合 ' + matches.length + ' 筆' : '輸入關鍵字搜尋') + ' —</option>';
+    matches.forEach(function (c) {
+      var sel = currentId === c.id ? ' selected' : '';
+      html += '<option value="' + c.id + '" data-cost="' + c.cost + '" data-price="' + c.price + '" data-name="' + c.name + '" data-color="' + (c.variant || '') + '" data-photo="' + (c.photoUrl || '') + '"' + sel + '>' + c.name + (c.variant ? '（' + c.variant + '）' : '') + ' · ' + fmt(c.price) + '</option>';
+    });
+    html += '<option value="__manual__"' + (it.resolution && it.resolution.source === 'manual' ? ' selected' : '') + '>自己輸入（不連結商品庫）</option>';
+    select.innerHTML = html;
   }
 
   $('orderList').addEventListener('change', onOrderListEvent);

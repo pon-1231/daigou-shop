@@ -191,6 +191,17 @@ function detectMergeSuspects(candidateNew, existingByHandle) {
   return result;
 }
 
+// 商品庫全文搜尋用的規格標籤，跟 stock.js 的 specLabelOf() 邏輯一致：優先用
+// spec1/spec2，沒有才退回 color/sizes（例如飛機盒這種包材是用 sizes 存規格）。
+function variantLabel(p) {
+  const parts = [];
+  if (p.spec1_value) parts.push(p.spec1_value);
+  else if (p.color) parts.push(p.color);
+  if (p.spec2_value) parts.push(p.spec2_value);
+  else if (p.sizes) parts.push(p.sizes);
+  return parts.join('　');
+}
+
 /* feedback1 常常是問卷式文字，例如「您的threads帳號？（...）：ssannn._.9」，
    帳號在最後一個全/半形冒號後面；訂單匯入分頁的「其它資訊」有時就是單純帳號本身。 */
 function parseHandle(raw) {
@@ -319,7 +330,7 @@ router.post('/feebee/parse', (req, res) => {
 
       const { data: priced, error: pricedErr } = await supabase
         .from('priced_items')
-        .select('id, name, sort_group, item_no, color, spec1_value, actual_cost, final_price, photo_url')
+        .select('id, name, sort_group, item_no, color, spec1_value, spec2_value, sizes, actual_cost, final_price, photo_url')
         .is('deleted_at', null);
       if (pricedErr) throw pricedErr;
       const priceIndex = {};
@@ -373,7 +384,18 @@ router.post('/feebee/parse', (req, res) => {
       newOrders.sort((a, b) => (a._sortKey < b._sortKey ? -1 : a._sortKey > b._sortKey ? 1 : 0));
       newOrders.forEach((o) => { delete o._sortKey; });
 
-      res.json({ sheetsRead, duplicates, newOrders });
+      // 讓前端可以「新增商品」時搜尋整個商品庫（例如飛機盒這種包材，賣貨便的匯出
+      // 檔裡本來就不會有，只能讓使用者自己從商品庫挑或手動輸入）。
+      const catalog = (priced || []).map((p) => ({
+        id: p.id,
+        name: p.name,
+        variant: variantLabel(p),
+        cost: Number(p.actual_cost) || 0,
+        price: Number(p.final_price) || 0,
+        photoUrl: p.photo_url || null
+      }));
+
+      res.json({ sheetsRead, duplicates, newOrders, catalog });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
