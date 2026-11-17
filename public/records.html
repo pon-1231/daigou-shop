@@ -569,7 +569,9 @@
   function formatDateTime(iso) {
     var d = new Date(iso);
     if (isNaN(d.getTime())) return '';
-    return d.toLocaleDateString('zh-Hant-TW') + ' ' + d.toLocaleTimeString('zh-Hant-TW', { hour: '2-digit', minute: '2-digit' });
+    // 固定鎖台灣時區，不要用瀏覽器/裝置當下的時區換算——不然同一個時間點，
+    // 看的人裝置時區不是台灣的話會換算錯，甚至跨到隔天去。
+    return d.toLocaleDateString('zh-Hant-TW', { timeZone: 'Asia/Taipei' }) + ' ' + d.toLocaleTimeString('zh-Hant-TW', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Taipei' });
   }
 
   function renderTrashList(orders) {

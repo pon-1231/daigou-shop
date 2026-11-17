@@ -617,7 +617,9 @@
   function formatDateTime(iso) {
     var d = new Date(iso);
     if (isNaN(d.getTime())) return '';
-    return d.toLocaleDateString('zh-Hant-TW') + ' ' + d.toLocaleTimeString('zh-Hant-TW', { hour: '2-digit', minute: '2-digit' });
+    // 固定鎖台灣時區，不要用瀏覽器/裝置當下的時區換算——不然同一個時間點，
+    // 看的人裝置時區不是台灣的話會換算錯，甚至跨到隔天去。
+    return d.toLocaleDateString('zh-Hant-TW', { timeZone: 'Asia/Taipei' }) + ' ' + d.toLocaleTimeString('zh-Hant-TW', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Taipei' });
   }
 
   /* 優先用新的 spec1/spec2 欄位顯示規格；還沒跑過資料庫轉換 SQL 的舊資料，各自 fallback 回舊的 color/sizes 欄位。 */
@@ -727,7 +729,7 @@
   function buildSavedItemRow(it) {
     var row = document.createElement('div');
     row.className = 'saved-item';
-    var dateStr = new Date(it.created_at).toLocaleDateString('zh-Hant-TW');
+    var dateStr = new Date(it.created_at).toLocaleDateString('zh-Hant-TW', { timeZone: 'Asia/Taipei' });
     var thumbHtml = it.photo_url
       ? '<img class="si-thumb" src="' + escapeHtml(it.photo_url) + '" alt="">'
       : '';
@@ -782,7 +784,7 @@
 
     var row = document.createElement('div');
     row.className = 'saved-item';
-    var dateStr = new Date(first.created_at).toLocaleDateString('zh-Hant-TW');
+    var dateStr = new Date(first.created_at).toLocaleDateString('zh-Hant-TW', { timeZone: 'Asia/Taipei' });
     var thumbUrl = (items.filter(function (it) { return it.photo_url; })[0] || {}).photo_url;
     var thumbHtml = thumbUrl ? '<img class="si-thumb" src="' + escapeHtml(thumbUrl) + '" alt="">' : '';
 
