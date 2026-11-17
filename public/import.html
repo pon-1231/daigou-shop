@@ -221,13 +221,19 @@
 
   function itemRowHtml(orderIdx, itemIdx, it) {
     var flagged = it.status !== 'matched';
-    var showEditor = flagged || it.editing;
+    // 從下拉選單選定的(resolution.source === 'matched')一旦確認完就收合成鎖定的
+    // 打勾文字，不要讓選單一直開著——滑動頁面時不小心點到會悄悄改掉選擇，使用
+    // 者不一定會發現。手動輸入(source === 'manual')的維持展開，打字欄位本來就
+    // 不會被誤觸成問題，而且輸入過程故意不整個 re-render，收合時機也抓不準。
+    var lockedToCompact = it.resolved && it.resolution && it.resolution.source === 'matched';
+    var showEditor = it.editing || !lockedToCompact;
     var rowClass = 'oi-row ' + (flagged ? 'flag' : 'ok') + (it.resolved ? ' resolved' : '');
     var html = '<div class="' + rowClass + '" data-order="' + orderIdx + '" data-item="' + itemIdx + '">';
 
     if (!showEditor) {
-      html += '<span>✓ ' + it.matched.name + (it.matched.color ? '（' + it.matched.color + '）' : '') + '</span>';
+      html += '<span>✓ ' + it.resolution.name + (it.resolution.color ? '（' + it.resolution.color + '）' : '') + '</span>';
       html += '<button type="button" class="oi-edit-btn">編輯</button>';
+      if (it.addedManually) html += '<button type="button" class="oi-remove-btn">移除</button>';
     } else if (it.addedManually) {
       html += '<div class="oi-raw">' + (it.resolved ? '✓ 已選好這筆手動加的商品' : '⚠ 手動加的商品，請搜尋商品庫或自己輸入') + '</div>';
       html += '<input type="text" class="oi-catalog-search" placeholder="搜尋商品名稱…（例如：飛機盒）">';
@@ -344,6 +350,7 @@
     } else {
       it.resolved = true;
       it.resolution = { source: 'matched', priced_item_id: opt.value, id: opt.value, name: opt.getAttribute('data-name'), color: opt.getAttribute('data-color'), cost: Number(opt.getAttribute('data-cost')), price: Number(opt.getAttribute('data-price')), photoUrl: opt.getAttribute('data-photo') || null };
+      it.editing = false; // 選定商品後收合回鎖定顯示，避免後面不小心又點到選單
     }
     renderNewOrders();
   }
