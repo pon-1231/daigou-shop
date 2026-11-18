@@ -26,7 +26,7 @@
   .oi-manual-fields input { width: auto; font-size: 12.5px; padding: 6px 8px; }
   .oi-manual-fields input.oi-manual-name { min-width: 180px; }
   .oi-manual-fields input.oi-manual-cost, .oi-manual-fields input.oi-manual-price { width: 90px; }
-  .oi-edit-btn, .oi-remove-btn, .oc-add-item {
+  .oi-edit-btn, .oi-remove-btn, .oc-add-item, .oi-pick-btn {
     font-family: var(--font-body); font-size: 11.5px; padding: 3px 9px; border-radius: 999px;
     border: 1px solid var(--line-strong); background: var(--bg-elevated); color: var(--ink-soft); cursor: pointer;
   }
@@ -35,7 +35,7 @@
   .oi-row input.oi-added-qty { width: 50px; font-size: 12.5px; padding: 6px 4px; text-align: center; }
 
   /* ---------- 新增商品：圖片選圖面板（跟 records.html 同一套，簡化掉編輯價格/新增尺寸那些跟匯入無關的功能） ---------- */
-  .picker-panel { margin: 16px 0; }
+  .picker-panel { margin-top: 14px; border: 1px solid var(--accent); }
   .picker-panel .picker-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
   .picker-panel .picker-head button { font-size: 12px; }
   .product-gallery { max-height: 360px; overflow-y: auto; padding: 2px; display: flex; flex-direction: column; gap: 10px; }
@@ -151,29 +151,6 @@
       <summary style="cursor:pointer; font-family:var(--font-display); font-weight:600; font-size:18px;">已存在系統裡，略過 <span class="chip good" id="dupCount">0 筆</span></summary>
       <div id="dupList" class="empty-state" style="margin-top:14px;">—</div>
     </details>
-
-    <div class="panel panel-pad picker-panel" id="pickerPanel" style="display:none;">
-      <div class="picker-head">
-        <h2 style="margin:0;">選商品</h2>
-        <button type="button" class="btn small" id="pickerCancel">取消</button>
-      </div>
-      <input type="text" id="pickerSearch" placeholder="搜尋商品名稱…">
-      <div class="product-gallery" id="pickerGallery" style="margin-top:10px;"></div>
-      <div class="size-picker" id="pickerSizePicker" style="display:none;">
-        <div class="sp-title">「<span id="pickerSizeItemName"></span>」選規格</div>
-        <div class="sp-quick" id="pickerSizeVariants"></div>
-        <button type="button" class="sp-cancel" id="pickerSizeCancel">‹ 回商品清單</button>
-      </div>
-      <div class="picker-manual-add">
-        <div class="pm-title">找不到嗎？自己輸入一次性品項（不連結商品庫）</div>
-        <div class="pm-row">
-          <input type="text" id="pickerManualName" placeholder="商品名稱">
-          <input type="number" id="pickerManualCost" placeholder="成本">
-          <input type="number" id="pickerManualPrice" placeholder="售價">
-          <button type="button" class="btn small" id="pickerManualAdd">加入</button>
-        </div>
-      </div>
-    </div>
 
     <h2>新訂單 <span class="chip warn" id="newCount">0 筆</span></h2>
     <label class="select-all-label" style="margin-bottom:10px; display:inline-flex;">
@@ -322,6 +299,9 @@
         html += '<option value="__manual__"' + (it.resolution && it.resolution.source === 'manual' ? ' selected' : '') + '>自己輸入（不連結商品庫）</option>';
         html += '</select>';
       }
+      // 這個清單只會列出跟商品編號同一組的候選，真的找不到對的時候改開圖片
+      // 選圖面板搜整個商品庫——跟「新增商品」那顆編輯按鈕是同一套流程。
+      html += '<button type="button" class="oi-pick-btn">🔍 搜整個商品庫</button>';
       var showManual = it.candidates.length === 0 || (it.resolution && it.resolution.source === 'manual');
       html += '<div class="oi-manual-fields" style="' + (showManual ? '' : 'display:none;') + '">';
       html += '<input type="text" class="oi-manual-name" placeholder="商品名稱" value="' + (it.resolution && it.resolution.name || it.rawName).replace(/"/g, '&quot;') + '">';
@@ -364,6 +344,10 @@
     if (o.mergeSuspect) html += mergeWarningHtml(idx, o);
     o.items.forEach(function (it, i) { html += itemRowHtml(idx, i, it); });
     if (o.importState !== 'done') html += '<button type="button" class="oc-add-item" data-order="' + idx + '">+ 新增商品（例如飛機盒等包材）</button>';
+    // 選圖面板開在觸發它的這張訂單卡片裡面（不是頁面最上方共用一個固定位置），
+    // 不然滑到第 15 筆訂單按「+新增商品」，畫面整個跳回頁面頂端，看不到正在
+    // 編輯的是哪張訂單——有些商品要不要加、加哪個規格本來就得對照訂單內容看。
+    if (state.picker.orderIdx === idx) html += pickerPanelHtml();
     html += '</div>';
     return html;
   }
@@ -448,6 +432,11 @@
         return;
       }
 
+      if (e.target.classList.contains('oi-pick-btn') && e.type === 'click') {
+        openPicker(oIdx, iIdx);
+        return;
+      }
+
       if (e.target.classList.contains('oi-added-qty') && e.type === 'change') {
         it.qty = Math.max(1, Math.round(Number(e.target.value)) || 1);
         renderNewOrders();
@@ -481,7 +470,15 @@
       var wIdx = Number(warning.getAttribute('data-order'));
       state.newOrders[wIdx].mergeAcknowledged = e.target.checked;
       warning.classList.toggle('acked', e.target.checked);
+      return;
     }
+
+    // 選圖面板現在是動態插進訂單卡片裡的，不是頁面載入時就固定存在的元素，
+    // 不能在頁面一開始就綁事件，改成跟其他訂單列表裡的東西一樣用委派處理。
+    if (e.target.id === 'pickerCancel' && e.type === 'click') { closePicker(); return; }
+    if (e.target.id === 'pickerSearch' && e.type === 'input') { renderPickerGallery(); return; }
+    if (e.target.id === 'pickerSizeCancel' && e.type === 'click') { closePickerSizeView(); return; }
+    if (e.target.id === 'pickerManualAdd' && e.type === 'click') { submitPickerManualAdd(); return; }
   }
 
   $('orderList').addEventListener('change', onOrderListEvent);
@@ -650,6 +647,27 @@
     return card;
   }
 
+  function pickerPanelHtml() {
+    var html = '<div class="panel panel-pad picker-panel" id="pickerPanel">';
+    html += '<div class="picker-head"><h2 style="margin:0;">選商品</h2><button type="button" class="btn small" id="pickerCancel">取消</button></div>';
+    html += '<input type="text" id="pickerSearch" placeholder="搜尋商品名稱…">';
+    html += '<div class="product-gallery" id="pickerGallery" style="margin-top:10px;"></div>';
+    html += '<div class="size-picker" id="pickerSizePicker" style="display:none;">';
+    html += '<div class="sp-title">「<span id="pickerSizeItemName"></span>」選規格</div>';
+    html += '<div class="sp-quick" id="pickerSizeVariants"></div>';
+    html += '<button type="button" class="sp-cancel" id="pickerSizeCancel">‹ 回商品清單</button>';
+    html += '</div>';
+    html += '<div class="picker-manual-add">';
+    html += '<div class="pm-title">找不到嗎？自己輸入一次性品項（不連結商品庫）</div>';
+    html += '<div class="pm-row">';
+    html += '<input type="text" id="pickerManualName" placeholder="商品名稱">';
+    html += '<input type="number" id="pickerManualCost" placeholder="成本">';
+    html += '<input type="number" id="pickerManualPrice" placeholder="售價">';
+    html += '<button type="button" class="btn small" id="pickerManualAdd">加入</button>';
+    html += '</div></div></div>';
+    return html;
+  }
+
   function renderPickerGallery() {
     var el = $('pickerGallery');
     var term = ($('pickerSearch').value || '').trim().toLowerCase();
@@ -689,13 +707,10 @@
       el.appendChild(details);
     });
   }
-  $('pickerSearch').addEventListener('input', renderPickerGallery);
-
   function closePickerSizeView() {
     $('pickerSizePicker').style.display = 'none';
     $('pickerSizeVariants').innerHTML = '';
   }
-  $('pickerSizeCancel').addEventListener('click', closePickerSizeView);
 
   function openPickerSizeView(name, options) {
     $('pickerSizeItemName').textContent = name;
@@ -785,25 +800,25 @@
     el.appendChild(sizeGrid);
   }
 
+  // 選圖面板開在觸發它的那張訂單卡片裡面（見 orderCardHtml），所以開/關都要
+  // 整個 re-render 訂單列表才會讓面板出現/消失，不是單純切換 display。
   function openPicker(orderIdx, itemIdx) {
     state.picker.orderIdx = orderIdx;
     state.picker.itemIdx = itemIdx;
+    renderNewOrders();
     $('pickerSearch').value = '';
     $('pickerManualName').value = '';
     $('pickerManualCost').value = '';
     $('pickerManualPrice').value = '';
-    closePickerSizeView();
     renderPickerGallery();
-    $('pickerPanel').style.display = 'block';
-    $('pickerPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    $('pickerPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
   function closePicker() {
-    $('pickerPanel').style.display = 'none';
     state.picker.orderIdx = null;
     state.picker.itemIdx = null;
+    renderNewOrders();
   }
-  $('pickerCancel').addEventListener('click', closePicker);
 
   // 選了圖庫裡的商品／手動輸入，結果都走這裡：itemIdx 是 null 代表新增一行，
   // 不是 null 代表「編輯」既有那一行（例如重新選規格），直接原地換掉 resolution。
@@ -820,8 +835,7 @@
       order.items[itemIdx].resolution = resolution;
       order.items[itemIdx].resolved = true;
     }
-    closePicker();
-    renderNewOrders();
+    closePicker(); // closePicker() 自己會呼叫 renderNewOrders()，這裡不用再呼叫一次
   }
 
   function confirmPickerSelection(product, size) {
@@ -836,7 +850,7 @@
     });
   }
 
-  $('pickerManualAdd').addEventListener('click', function () {
+  function submitPickerManualAdd() {
     var name = $('pickerManualName').value.trim();
     if (!name) { showToast('請先輸入商品名稱'); return; }
     applyPickerResult({
@@ -845,7 +859,7 @@
       cost: Number($('pickerManualCost').value) || 0,
       price: Number($('pickerManualPrice').value) || 0
     });
-  });
+  }
 
   function buildItemsPayload(order) {
     var rows = [];
