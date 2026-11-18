@@ -34,8 +34,23 @@
   .oc-add-item { margin-top: 10px; border-style: dashed; }
   .oi-row input.oi-added-qty { width: 50px; font-size: 12.5px; padding: 6px 4px; text-align: center; }
 
+  /* 選圖面板開著時，訂單卡片分兩欄：左邊挑商品、右邊是這張訂單本身的內容
+     (含新增進去的商品)，兩邊同時看得到，不用一直滑上滑下比對。訂單量多、
+     卡片本來就很長的時候尤其有感。螢幕太窄(手機)放不下兩欄，改疊成一欄，
+     這時候用 order 把訂單內容排到選圖面板前面——「+新增商品」按鈕就在
+     訂單內容裡，手機上疊起來時讓使用者先看到自己點的那顆按鈕附近的東西，
+     而不是一打開先看到整塊選圖面板，比較符合直覺。 */
+  .oc-split { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(260px, 1.2fr); gap: 16px; align-items: start; }
+  .oc-split .oc-picker-col, .oc-split .oc-main-col { min-width: 0; }
+  @media (max-width: 760px) {
+    .oc-split { grid-template-columns: 1fr; }
+    .oc-split .oc-picker-col { order: 2; }
+    .oc-split .oc-main-col { order: 1; }
+  }
+
   /* ---------- 新增商品：圖片選圖面板（跟 records.html 同一套，簡化掉編輯價格/新增尺寸那些跟匯入無關的功能） ---------- */
-  .picker-panel { margin-top: 14px; border: 1px solid var(--accent); }
+  .picker-panel { margin-top: 14px; padding: 14px; border: 1px solid var(--accent); border-radius: var(--radius-sm); background: var(--bg); }
+  .oc-picker-col .picker-panel { margin-top: 0; }
   .picker-panel .picker-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
   .picker-panel .picker-head button { font-size: 12px; }
   .product-gallery { max-height: 360px; overflow-y: auto; padding: 2px; display: flex; flex-direction: column; gap: 10px; }
@@ -268,12 +283,15 @@
 
   function itemRowHtml(orderIdx, itemIdx, it) {
     var flagged = it.status !== 'matched';
-    // 從下拉選單／圖片選圖選定的(resolution.source === 'matched')、或是手動加的
-    // 商品，一旦確認完就收合成鎖定的打勾文字，不要讓選單一直開著——滑動頁面時
-    // 不小心點到會悄悄改掉選擇，使用者不一定會發現。原本賣貨便解析出來、靠手動
-    // 輸入解掉紅字的(source === 'manual')維持展開，打字欄位本來就不會有誤觸
-    // 風險，而且輸入過程故意不整個 re-render，收合時機也抓不準。
-    var lockedToCompact = it.resolved && (it.addedManually || (it.resolution && it.resolution.source === 'matched'));
+    // 只有兩種情況會收合成鎖定的打勾文字：① 系統自己比對出來、有信心的
+    // (status === 'matched')，這個從一開始就是這樣顯示，沒人反應過問題；
+    // ② 用「新增商品」的圖片選圖面板加的，因為它沒有別的內嵌編輯介面，收合
+    // 純粹是因為沒有東西可以一直開著。原本賣貨便解析出來的紅字商品(不管是
+    // 窄選單選的還是用「搜整個商品庫」選的)刻意不收合——同一個商品名稱但
+    // 顏色不同的好幾筆紅字，收合後只剩一行「✓ 名稱（顏色）」，長得太像，
+    // 使用者反映容易搞混、誤以為系統把不同顏色的兩筆設定成同一項，維持展開
+    // 讓選單/已選的值一直看得到比較清楚。
+    var lockedToCompact = it.addedManually ? it.resolved : (it.status === 'matched');
     var showEditor = it.editing || !lockedToCompact;
     var rowClass = 'oi-row ' + (flagged ? 'flag' : 'ok') + (it.resolved ? ' resolved' : '');
     var html = '<div class="' + rowClass + '" data-order="' + orderIdx + '" data-item="' + itemIdx + '">';
@@ -336,18 +354,25 @@
 
   function orderCardHtml(o, idx) {
     var statusCls = o.importState === 'done' ? 'imported' : (o.importState === 'error' ? 'import-error' : '');
+    var mainHtml = '<div class="oc-head">';
+    mainHtml += '<label><input type="checkbox" class="oc-include" ' + (o.included ? 'checked' : '') + (o.importState === 'done' ? ' disabled' : '') + '> <strong>' + (o.feedbackHandle || o.customerMasked || '(無暱稱)') + '</strong> <span class="chip info">' + o.orderNo + '</span></label>';
+    mainHtml += '<span class="oc-meta">' + o.date + ' · 共 ' + fmt(currentOrderTotal(o)) + (o.importState === 'done' ? ' · 已匯入' : (o.importState === 'error' ? ' · 匯入失敗：' + (o.importError || '') : '')) + '</span>';
+    mainHtml += '</div>';
+    if (o.mergeSuspect) mainHtml += mergeWarningHtml(idx, o);
+    o.items.forEach(function (it, i) { mainHtml += itemRowHtml(idx, i, it); });
+    if (o.importState !== 'done') mainHtml += '<button type="button" class="oc-add-item" data-order="' + idx + '">+ 新增商品（例如飛機盒等包材）</button>';
+
     var html = '<div class="panel panel-pad order-card ' + statusCls + '" data-order="' + idx + '">';
-    html += '<div class="oc-head">';
-    html += '<label><input type="checkbox" class="oc-include" ' + (o.included ? 'checked' : '') + (o.importState === 'done' ? ' disabled' : '') + '> <strong>' + (o.feedbackHandle || o.customerMasked || '(無暱稱)') + '</strong> <span class="chip info">' + o.orderNo + '</span></label>';
-    html += '<span class="oc-meta">' + o.date + ' · 共 ' + fmt(currentOrderTotal(o)) + (o.importState === 'done' ? ' · 已匯入' : (o.importState === 'error' ? ' · 匯入失敗：' + (o.importError || '') : '')) + '</span>';
-    html += '</div>';
-    if (o.mergeSuspect) html += mergeWarningHtml(idx, o);
-    o.items.forEach(function (it, i) { html += itemRowHtml(idx, i, it); });
-    if (o.importState !== 'done') html += '<button type="button" class="oc-add-item" data-order="' + idx + '">+ 新增商品（例如飛機盒等包材）</button>';
-    // 選圖面板開在觸發它的這張訂單卡片裡面（不是頁面最上方共用一個固定位置），
-    // 不然滑到第 15 筆訂單按「+新增商品」，畫面整個跳回頁面頂端，看不到正在
-    // 編輯的是哪張訂單——有些商品要不要加、加哪個規格本來就得對照訂單內容看。
-    if (state.picker.orderIdx === idx) html += pickerPanelHtml();
+    // 選圖面板開著的時候分兩欄顯示（見 .oc-split 的 CSS 註解），兩邊同時看得到，
+    // 不用一直滑上滑下比對訂單內容跟選圖結果；沒開的時候維持原本單欄排版。
+    if (state.picker.orderIdx === idx) {
+      html += '<div class="oc-split">';
+      html += '<div class="oc-picker-col">' + pickerPanelHtml() + '</div>';
+      html += '<div class="oc-main-col">' + mainHtml + '</div>';
+      html += '</div>';
+    } else {
+      html += mainHtml;
+    }
     html += '</div>';
     return html;
   }
@@ -648,7 +673,7 @@
   }
 
   function pickerPanelHtml() {
-    var html = '<div class="panel panel-pad picker-panel" id="pickerPanel">';
+    var html = '<div class="picker-panel" id="pickerPanel">';
     html += '<div class="picker-head"><h2 style="margin:0;">選商品</h2><button type="button" class="btn small" id="pickerCancel">取消</button></div>';
     html += '<input type="text" id="pickerSearch" placeholder="搜尋商品名稱…">';
     html += '<div class="product-gallery" id="pickerGallery" style="margin-top:10px;"></div>';
