@@ -8,8 +8,9 @@
 <style>
   .order-card { margin-bottom: 14px; }
   .order-card .oc-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-  .order-card .oc-head label { display: flex; align-items: center; gap: 7px; margin: 0; cursor: pointer; }
+  .order-card .oc-head-left { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
   .order-card .oc-head input[type="checkbox"] { width: auto; cursor: pointer; }
+  .order-card .oc-name-input { width: auto; min-width: 140px; font-weight: 700; font-size: 14px; padding: 4px 8px; }
   .order-card .oc-meta { font-family: var(--font-mono); color: var(--ink-soft); font-size: 12px; white-space: nowrap; }
   .order-card.imported { opacity: 0.55; }
   .order-card.import-error { border-color: var(--bad); }
@@ -26,13 +27,39 @@
   .oi-manual-fields input { width: auto; font-size: 12.5px; padding: 6px 8px; }
   .oi-manual-fields input.oi-manual-name { min-width: 180px; }
   .oi-manual-fields input.oi-manual-cost, .oi-manual-fields input.oi-manual-price { width: 90px; }
-  .oi-edit-btn, .oi-remove-btn, .oc-add-item, .oi-pick-btn {
+  .oi-edit-btn, .oi-remove-btn, .oc-add-item, .oi-pick-btn, .oi-gift-btn {
     font-family: var(--font-body); font-size: 11.5px; padding: 3px 9px; border-radius: 999px;
     border: 1px solid var(--line-strong); background: var(--bg-elevated); color: var(--ink-soft); cursor: pointer;
+    flex-shrink: 0; white-space: nowrap;
   }
   .oi-remove-btn { color: var(--bad); border-color: var(--bad); }
   .oc-add-item { margin-top: 10px; border-style: dashed; }
-  .oi-row input.oi-added-qty { width: 50px; font-size: 12.5px; padding: 6px 4px; text-align: center; }
+  .oi-gift-btn.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+
+  /* 每樣商品都用跟 records.html 訂單卡片一樣的「縮圖+名稱+規格+數量+成本→售價」
+     完整顯示，不是比對成功/新增就收合成只看得到名稱的一行——同名不同色的幾筆
+     商品放在一起時，看得到圖跟完整規格才不會搞混是哪一筆。 */
+  .oi-card { display: flex; align-items: center; gap: 8px; width: 100%; }
+  .oi-card img, .oi-card .oi-placeholder {
+    width: 36px; height: 36px; border-radius: 6px; object-fit: cover; flex-shrink: 0;
+    background: var(--bg-elevated); border: 1px solid var(--line);
+  }
+  .oi-card .oi-placeholder { display: flex; align-items: center; justify-content: center; font-size: 16px; color: var(--ink-soft); }
+  .oi-card .oi-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .oi-card .oi-name { font-size: 12.5px; }
+  .oi-card .oi-size { font-size: 10.5px; color: var(--ink-soft); }
+  .oi-card .oi-gift-tag {
+    font-size: 10px; font-weight: 700; color: var(--accent); background: var(--accent-soft);
+    border-radius: 4px; padding: 1px 5px; margin-left: 2px;
+  }
+  .oi-card .oi-nums { font-family: var(--font-mono); color: var(--ink-soft); font-size: 11px; }
+  .oi-row input.oi-qty-input { width: 48px; font-size: 12.5px; padding: 6px 4px; text-align: center; flex-shrink: 0; }
+
+  .oc-repeat { font-size: 11.5px; color: var(--accent); font-weight: 600; margin-top: 4px; }
+  .oc-note {
+    width: 100%; margin-top: 10px; font-size: 12.5px; min-height: 44px; font-family: var(--font-body);
+    border: 1px solid var(--line-strong); border-radius: var(--radius-sm); padding: 7px 10px; resize: vertical;
+  }
 
   /* 選圖面板開著時，訂單卡片分兩欄：左邊挑商品、右邊是這張訂單本身的內容
      (含新增進去的商品)，兩邊同時看得到，不用一直滑上滑下比對。訂單量多、
@@ -241,10 +268,13 @@
             it.resolution = it.status === 'matched' ? Object.assign({ source: 'matched' }, it.matched) : null;
             it.editing = false;
             it.addedManually = false;
+            it.isGift = false;
+            it.giftOriginalPrice = null;
           });
           o.included = true;
           o.importState = null; // null | 'done' | 'error'
           o.mergeAcknowledged = !o.mergeSuspect;
+          o.handleOverride = o.feedbackHandle || o.customerMasked || '';
           return o;
         });
         renderDuplicates();
@@ -281,31 +311,49 @@
     }).join('');
   }
 
+  // 比對成功/選圖選定前，用賣貨便原始文字跟單價當佔位；比對出來之後一律用
+  // it.resolution 的值，這樣贈品歸零售價、搜整個商品庫換規格這些才會立刻反映
+  // 在卡片跟訂單總額/淨利上，不會卡在舊的 unitPrice。
+  function itemEffectivePrice(it) { return it.resolution ? (Number(it.resolution.price) || 0) : (Number(it.unitPrice) || 0); }
+  function itemEffectiveCost(it) { return it.resolution ? (Number(it.resolution.cost) || 0) : 0; }
+
+  function itemCardHtml(it, lockedToCompact) {
+    var name = it.resolution ? it.resolution.name : it.rawName;
+    var color = it.resolution ? it.resolution.color : '';
+    var photo = it.resolution ? it.resolution.photoUrl : null;
+    var cost = itemEffectiveCost(it);
+    var price = itemEffectivePrice(it);
+    var html = '<div class="oi-card">';
+    html += photo ? '<img src="' + escapeHtml(photo) + '" alt="">' : '<div class="oi-placeholder">🖼️</div>';
+    html += '<div class="oi-info">';
+    html += '<span class="oi-name">' + escapeHtml(name || '（尚未選擇商品）') + (color ? ' <span class="oi-size">（' + escapeHtml(color) + '）</span>' : '') + (it.isGift ? ' <span class="oi-gift-tag">贈品</span>' : '') + '</span>';
+    html += '<span class="oi-nums">' + fmt(cost) + ' → ' + fmt(price) + '</span>';
+    html += '</div>';
+    html += '<input type="number" class="oi-qty-input" value="' + it.qty + '" min="1" title="數量（改小會自動拆成兩筆，方便分開選不同規格/贈品）">';
+    if (it.resolution) html += '<button type="button" class="oi-gift-btn' + (it.isGift ? ' active' : '') + '">' + (it.isGift ? '🎁 贈品中' : '🎁 設為贈品') + '</button>';
+    if (lockedToCompact) html += '<button type="button" class="oi-edit-btn">編輯</button>';
+    if (it.addedManually) html += '<button type="button" class="oi-remove-btn">移除</button>';
+    html += '</div>';
+    return html;
+  }
+
   function itemRowHtml(orderIdx, itemIdx, it) {
     var flagged = it.status !== 'matched';
-    // 只有兩種情況會收合成鎖定的打勾文字：① 系統自己比對出來、有信心的
+    // 只有兩種情況會收合掉下面的選單/搜尋控制區：① 系統自己比對出來、有信心的
     // (status === 'matched')，這個從一開始就是這樣顯示，沒人反應過問題；
     // ② 用「新增商品」的圖片選圖面板加的，因為它沒有別的內嵌編輯介面，收合
     // 純粹是因為沒有東西可以一直開著。原本賣貨便解析出來的紅字商品(不管是
-    // 窄選單選的還是用「搜整個商品庫」選的)刻意不收合——同一個商品名稱但
-    // 顏色不同的好幾筆紅字，收合後只剩一行「✓ 名稱（顏色）」，長得太像，
-    // 使用者反映容易搞混、誤以為系統把不同顏色的兩筆設定成同一項，維持展開
-    // 讓選單/已選的值一直看得到比較清楚。
+    // 窄選單選的還是用「搜整個商品庫」選的)刻意不收合控制區——但不管收不收合，
+    // 上面的商品卡片(縮圖/名稱/規格/數量/售價)一律完整顯示，不會只剩一行字。
     var lockedToCompact = it.addedManually ? it.resolved : (it.status === 'matched');
-    var showEditor = it.editing || !lockedToCompact;
+    var showControl = it.editing || !lockedToCompact;
     var rowClass = 'oi-row ' + (flagged ? 'flag' : 'ok') + (it.resolved ? ' resolved' : '');
     var html = '<div class="' + rowClass + '" data-order="' + orderIdx + '" data-item="' + itemIdx + '">';
 
-    if (!showEditor) {
-      html += '<span>✓ ' + it.resolution.name + (it.resolution.color ? '（' + it.resolution.color + '）' : '') + '</span>';
-      if (it.addedManually) {
-        html += '<input type="number" class="oi-added-qty" value="' + it.qty + '" min="1" title="數量">';
-        html += '<span class="oi-nums">· ' + fmt(it.resolution.price) + '</span>';
-      }
-      html += '<button type="button" class="oi-edit-btn">編輯</button>';
-      if (it.addedManually) html += '<button type="button" class="oi-remove-btn">移除</button>';
-    } else {
-      html += '<div class="oi-raw">' + (it.resolved ? '✓「' + it.rawName + '」：已確認' : '⚠「' + it.rawName + '」：' + (REASON_LABEL[it.reason] || '需要確認')) + '</div>';
+    html += itemCardHtml(it, lockedToCompact);
+
+    if (showControl) {
+      if (flagged) html += '<div class="oi-raw">' + (it.resolved ? '✓「' + it.rawName + '」：已確認' : '⚠「' + it.rawName + '」：' + (REASON_LABEL[it.reason] || '需要確認')) + '</div>';
       var currentId = (it.resolution && (it.resolution.priced_item_id || it.resolution.id)) || it.suggestedId;
       if (it.candidates.length > 0) {
         html += '<select class="oi-candidate-select">';
@@ -327,7 +375,6 @@
       html += '<input type="number" class="oi-manual-price" placeholder="售價" value="' + (it.resolution ? it.resolution.price : it.unitPrice) + '">';
       html += '</div>';
     }
-    if (!it.addedManually) html += '<span class="oi-nums">x' + it.qty + ' · ' + fmt(it.unitPrice) + '</span>';
     html += '</div>';
     return html;
   }
@@ -344,23 +391,31 @@
     return html;
   }
 
-  // 新增/刪除/改數量後訂單總額要跟著動，不能一直沿用解析當下算好的 orderTotal。
+  // 新增/刪除/改數量/設贈品後訂單總額跟淨利都要跟著動，不能一直沿用解析當下
+  // 算好的 orderTotal，也不能只看 it.unitPrice（贈品歸零、換規格改價都是改
+  // it.resolution，不是 unitPrice）。
   function currentOrderTotal(o) {
-    return o.items.reduce(function (s, it) {
-      var price = it.addedManually ? (it.resolution ? Number(it.resolution.price) || 0 : 0) : it.unitPrice;
-      return s + price * it.qty;
-    }, 0);
+    return o.items.reduce(function (s, it) { return s + itemEffectivePrice(it) * it.qty; }, 0) - (Number(o.discountAmount) || 0);
+  }
+  function currentOrderProfit(o) {
+    return o.items.reduce(function (s, it) { return s + (itemEffectivePrice(it) - itemEffectiveCost(it)) * it.qty; }, 0) - (Number(o.discountAmount) || 0);
   }
 
   function orderCardHtml(o, idx) {
     var statusCls = o.importState === 'done' ? 'imported' : (o.importState === 'error' ? 'import-error' : '');
     var mainHtml = '<div class="oc-head">';
-    mainHtml += '<label><input type="checkbox" class="oc-include" ' + (o.included ? 'checked' : '') + (o.importState === 'done' ? ' disabled' : '') + '> <strong>' + (o.feedbackHandle || o.customerMasked || '(無暱稱)') + '</strong> <span class="chip info">' + o.orderNo + '</span></label>';
-    mainHtml += '<span class="oc-meta">' + o.date + ' · 共 ' + fmt(currentOrderTotal(o)) + (o.importState === 'done' ? ' · 已匯入' : (o.importState === 'error' ? ' · 匯入失敗：' + (o.importError || '') : '')) + '</span>';
+    mainHtml += '<div class="oc-head-left">';
+    mainHtml += '<input type="checkbox" class="oc-include" data-order="' + idx + '" ' + (o.included ? 'checked' : '') + (o.importState === 'done' ? ' disabled' : '') + '>';
+    mainHtml += '<input type="text" class="oc-name-input" data-order="' + idx + '" value="' + escapeHtml(o.handleOverride || '') + '" placeholder="顧客名稱/帳號"' + (o.importState === 'done' ? ' disabled' : '') + '>';
+    mainHtml += '<span class="chip info">' + o.orderNo + '</span>';
+    if (o.repeatCount > 0) mainHtml += '<span class="oc-repeat">🔁 回購第' + o.repeatCount + '次</span>';
+    mainHtml += '</div>';
+    mainHtml += '<span class="oc-meta">' + o.date + ' · 共 ' + fmt(currentOrderTotal(o)) + ' · 淨利 ' + fmt(currentOrderProfit(o)) + (o.importState === 'done' ? ' · 已匯入' : (o.importState === 'error' ? ' · 匯入失敗：' + (o.importError || '') : '')) + '</span>';
     mainHtml += '</div>';
     if (o.mergeSuspect) mainHtml += mergeWarningHtml(idx, o);
     o.items.forEach(function (it, i) { mainHtml += itemRowHtml(idx, i, it); });
     if (o.importState !== 'done') mainHtml += '<button type="button" class="oc-add-item" data-order="' + idx + '">+ 新增商品（例如飛機盒等包材）</button>';
+    mainHtml += '<textarea class="oc-note" data-order="' + idx + '" placeholder="訂單備註…">' + escapeHtml(o.note || '') + '</textarea>';
 
     var html = '<div class="panel panel-pad order-card ' + statusCls + '" data-order="' + idx + '">';
     // 選圖面板開著的時候分兩欄顯示（見 .oc-split 的 CSS 註解），兩邊同時看得到，
@@ -462,8 +517,36 @@
         return;
       }
 
-      if (e.target.classList.contains('oi-added-qty') && e.type === 'change') {
-        it.qty = Math.max(1, Math.round(Number(e.target.value)) || 1);
+      // 數量改小會自動把差額拆成新的一行——同一筆娃包買2件，但客人備註說要
+      // 兩個不同顏色時，拆開後兩行才能各自獨立選規格/設贈品。改大就單純加數量，
+      // 沒有「從哪裡補」的對應關係，不用特別處理。
+      if (e.target.classList.contains('oi-qty-input') && e.type === 'change') {
+        var newQty = Math.max(1, Math.round(Number(e.target.value)) || 1);
+        var orderForQty = state.newOrders[oIdx];
+        if (newQty < it.qty) {
+          var remainder = it.qty - newQty;
+          it.qty = newQty;
+          var clone = JSON.parse(JSON.stringify(it));
+          clone.qty = remainder;
+          orderForQty.items.splice(iIdx + 1, 0, clone);
+        } else {
+          it.qty = newQty;
+        }
+        renderNewOrders();
+        return;
+      }
+
+      if (e.target.classList.contains('oi-gift-btn') && e.type === 'click') {
+        if (!it.resolution) return;
+        if (it.isGift) {
+          it.resolution.price = it.giftOriginalPrice != null ? it.giftOriginalPrice : it.resolution.price;
+          it.giftOriginalPrice = null;
+          it.isGift = false;
+        } else {
+          it.giftOriginalPrice = it.resolution.price;
+          it.resolution.price = 0;
+          it.isGift = true;
+        }
         renderNewOrders();
         return;
       }
@@ -482,11 +565,21 @@
       return;
     }
 
-    var head = e.target.closest('.oc-head');
-    if (head && e.target.classList.contains('oc-include') && e.type === 'change') {
-      var cardIdx = Number(e.target.closest('.order-card').getAttribute('data-order'));
+    if (e.target.classList.contains('oc-include') && e.type === 'change') {
+      var cardIdx = Number(e.target.getAttribute('data-order'));
       state.newOrders[cardIdx].included = e.target.checked;
       syncSelectAllCheckbox();
+      return;
+    }
+
+    // 顧客名稱/訂單備註故意不整個 re-render：打字打到一半重畫會把這兩個欄位
+    // 整個換掉，游標跟焦點都會不見，直接改 state 就好，commit 的時候會讀到。
+    if (e.target.classList.contains('oc-name-input') && (e.type === 'input' || e.type === 'change')) {
+      state.newOrders[Number(e.target.getAttribute('data-order'))].handleOverride = e.target.value;
+      return;
+    }
+    if (e.target.classList.contains('oc-note') && (e.type === 'input' || e.type === 'change')) {
+      state.newOrders[Number(e.target.getAttribute('data-order'))].note = e.target.value;
       return;
     }
 
@@ -674,7 +767,7 @@
 
   function pickerPanelHtml() {
     var html = '<div class="picker-panel" id="pickerPanel">';
-    html += '<div class="picker-head"><h2 style="margin:0;">選商品</h2><button type="button" class="btn small" id="pickerCancel">取消</button></div>';
+    html += '<div class="picker-head"><h2 style="margin:0;">選商品</h2><button type="button" class="btn small" id="pickerCancel">✕ 完成</button></div>';
     html += '<input type="text" id="pickerSearch" placeholder="搜尋商品名稱…">';
     html += '<div class="product-gallery" id="pickerGallery" style="margin-top:10px;"></div>';
     html += '<div class="size-picker" id="pickerSizePicker" style="display:none;">';
@@ -847,6 +940,8 @@
 
   // 選了圖庫裡的商品／手動輸入，結果都走這裡：itemIdx 是 null 代表新增一行，
   // 不是 null 代表「編輯」既有那一行（例如重新選規格），直接原地換掉 resolution。
+  // 故意不自動關面板——一次訂單常常要補好幾樣東西（飛機盒+贈品+...），選完
+  // 一個接著選下一個，選完才按右上角「完成」自己關掉。
   function applyPickerResult(resolution) {
     var orderIdx = state.picker.orderIdx, itemIdx = state.picker.itemIdx;
     var order = state.newOrders[orderIdx];
@@ -854,13 +949,19 @@
       order.items.push({
         rawName: '', qty: 1, unitPrice: resolution.price,
         status: 'needs_review', reason: null, matched: null, suggestedId: null, candidates: [],
-        resolved: true, resolution: resolution, editing: false, addedManually: true
+        resolved: true, resolution: resolution, editing: false, addedManually: true,
+        isGift: false, giftOriginalPrice: null
       });
     } else {
       order.items[itemIdx].resolution = resolution;
       order.items[itemIdx].resolved = true;
     }
-    closePicker(); // closePicker() 自己會呼叫 renderNewOrders()，這裡不用再呼叫一次
+    var keepSearch = $('pickerSearch') ? $('pickerSearch').value : '';
+    state.picker.itemIdx = null; // 下一次選預設變成「新增」，不會一直改同一行
+    renderNewOrders();
+    $('pickerSearch').value = keepSearch;
+    renderPickerGallery();
+    showToast('已加入，可以繼續選下一樣，選完按右上角「完成」關閉');
   }
 
   function confirmPickerSelection(product, size) {
@@ -896,7 +997,8 @@
         cost: Number(src.cost) || 0,
         soldPrice: Number(src.price) || 0,
         productId: src.source === 'manual' ? null : (src.priced_item_id || src.id || null),
-        photoUrl: src.source === 'manual' ? null : (src.photoUrl || null)
+        photoUrl: src.source === 'manual' ? null : (src.photoUrl || null),
+        isGift: !!it.isGift
       };
       for (var q = 0; q < it.qty; q++) rows.push(row);
     });
@@ -936,7 +1038,7 @@
       $('commitStatus').textContent = '匯入中… (' + (i + 1) + '/' + toSend.length + ')';
 
       var fd = new FormData();
-      var customerName = (order.feedbackHandle || order.customerMasked || '') + '/' + order.orderNo;
+      var customerName = (order.handleOverride || order.feedbackHandle || order.customerMasked || '') + '/' + order.orderNo;
       fd.append('customerName', customerName);
       fd.append('orderStatus', defaultStatus);
       fd.append('shipBy', addDays(order.date, shipDays));

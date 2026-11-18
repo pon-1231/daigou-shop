@@ -280,6 +280,7 @@
     cursor: pointer; text-decoration: underline; margin-left: auto;
   }
   .oc-customer { font-weight: 700; font-size: 15px; }
+  .oc-repeat { font-size: 11px; font-weight: 600; color: var(--accent); margin-left: 2px; }
   .oc-date { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-soft); }
   .oc-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
   .status-select {
@@ -1659,12 +1660,20 @@
       var cls = 'good';
       if (profit < 0) cls = 'bad'; else if (totalSold > 0 && (profit / totalSold * 100) < 25) cls = 'warn';
 
+      // 跟新增訂單表單的「回購第X次」提示同一套定義：算這張訂單成立當下，
+      // 同一個客人之前已經有幾筆訂單——不是「總共買過幾次」，是「下這筆單時
+      // 已經是第幾次回購」，所以要比 created_at 早的才算。
+      var repeatKey = customerKey(o.customer_name);
+      var pastCount = repeatKey ? allOrders.filter(function (o2) {
+        return o2.id !== o.id && customerKey(o2.customer_name) === repeatKey && new Date(o2.created_at) < new Date(o.created_at);
+      }).length : 0;
+
       if (selectedOrderIds.has(o.id)) card.classList.add('selected');
 
       card.innerHTML =
         '<input type="checkbox" class="oc-check" data-action="select"' + (selectedOrderIds.has(o.id) ? ' checked' : '') + '>' +
         '<div class="oc-body">' +
-          '<div class="oc-top"><span class="oc-customer">' + escapeHtml(o.customer_name || '未填客人名稱') + '</span><span class="oc-date">' + escapeHtml(o.sold_at) + '</span></div>' +
+          '<div class="oc-top"><span class="oc-customer">' + escapeHtml(o.customer_name || '未填客人名稱') + (pastCount > 0 ? ' <span class="oc-repeat">🔁 回購第' + pastCount + '次</span>' : '') + '</span><span class="oc-date">' + escapeHtml(o.sold_at) + '</span></div>' +
           '<div class="oc-controls">' +
             '<select class="status-select s-' + status + '" data-action="status">' + statusOptions + '</select>' +
             (o.status_updated_at ? '<span class="status-updated-note">狀態更新：' + formatDateTime(o.status_updated_at) + '</span>' : '') +

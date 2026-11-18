@@ -307,11 +307,19 @@ router.post('/feebee/parse', (req, res) => {
       // 系統裡已經記過的某筆訂單」反推，抓到的話整筆標記讓人工確認，不自動略過也
       // 不自動匯入——這只是推論，不是賣貨便資料裡有明講的欄位。
       const existingByHandle = {};
+      // 回購次數跟 records.html 的 customerKey() 同一套（小寫比對），獨立一份、
+      // 不跟上面合併偵測共用，因為合併偵測刻意只認「有訂單編號」的那些，回購
+      // 次數要算全部既有訂單，兩邊的篩選條件不一樣。
+      const repeatCountByHandle = {};
       (existingOrders || []).forEach((o) => {
         const name = String(o.customer_name || '');
         const m = name.match(/CM\d{10,}/);
         if (m) existingOrderNos.add(m[0]);
         const handle = name.split('/')[0].trim();
+        if (handle) {
+          const key = handle.toLowerCase();
+          repeatCountByHandle[key] = (repeatCountByHandle[key] || 0) + 1;
+        }
         if (!handle || !m) return;
         const total = (o.order_items || []).reduce((s, it) => s + (Number(it.sold_price) || 0), 0);
         (existingByHandle[handle] = existingByHandle[handle] || []).push({ orderNo: m[0], total: total });
@@ -366,6 +374,7 @@ router.post('/feebee/parse', (req, res) => {
           discountReason: discountAmount !== 0 ? '賣貨便折價券/運費券抵扣' : null,
           orderTotal: o.orderTotal,
           mergeSuspect: mergeSuspectByOrderNo[o.orderNo] || null,
+          repeatCount: (o.handle && repeatCountByHandle[o.handle.toLowerCase()]) || 0,
           items: items,
           _sortKey: orderDateTimeKey(o)
         };
