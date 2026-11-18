@@ -332,7 +332,9 @@
     html += '<input type="number" class="oi-qty-input" value="' + it.qty + '" min="1" title="數量（改小會自動拆成兩筆，方便分開選不同規格/贈品）">';
     if (it.resolution) html += '<button type="button" class="oi-gift-btn' + (it.isGift ? ' active' : '') + '">' + (it.isGift ? '🎁 贈品中' : '🎁 設為贈品') + '</button>';
     if (lockedToCompact) html += '<button type="button" class="oi-edit-btn">編輯</button>';
-    if (it.addedManually) html += '<button type="button" class="oi-remove-btn">移除</button>';
+    // 不是只有「新增商品」加的才能移除——改數量拆出來的那幾行、或賣貨便本來
+    // 解析出來但其實不該匯入的商品，都要能移除，不限定是手動加的才有這顆鈕。
+    html += '<button type="button" class="oi-remove-btn">移除</button>';
     html += '</div>';
     return html;
   }
@@ -436,6 +438,12 @@
     $('newCount').textContent = state.newOrders.length + ' 筆';
     $('orderList').innerHTML = state.newOrders.map(orderCardHtml).join('');
     syncSelectAllCheckbox();
+    // 選圖面板開著的時候，任何會觸發整個訂單列表重畫的操作（設贈品、改數量、
+    // 選下拉選單…）都會讓 orderCardHtml 重新插進一個全新、空的 #pickerGallery
+    // 容器——裡面的商品格子是另外呼叫 renderPickerGallery() 才畫出來的，不會
+    // 自動跟著回來，畫面上看起來就像左邊的商品欄整個跳掉。統一在這裡補畫，
+    // 不管是哪個操作觸發的重畫都不會漏。
+    if (state.picker.orderIdx !== null) renderPickerGallery();
   }
 
   // 已經匯入成功的訂單不能再勾（checkbox 會被 disable），全選只管還能動的那些。
@@ -553,6 +561,7 @@
 
       if (e.target.classList.contains('oi-remove-btn') && e.type === 'click') {
         var order = state.newOrders[oIdx];
+        if (order.items.length <= 1) { showToast('這張訂單至少要留一樣商品，不能全部移除'); return; }
         order.items.splice(iIdx, 1);
         renderNewOrders();
         return;
