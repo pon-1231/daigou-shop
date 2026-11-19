@@ -556,6 +556,11 @@
   var activeStatusFilter = null; // status string | '__overdue__' | null
   var editingId = null;
   var currentPhotoUrl = null;
+  // 編輯既有訂單時，/api/stock 查到的庫存數字已經扣過這張訂單自己原本佔用的量，
+  // 不是「還沒算這張訂單」的庫存。用原本數量比對剩餘庫存會一直誤判「不夠」——
+  // 其實只要沒有比原本訂的量還多，庫存根本不會變動（編輯是整批重算，不是疊加扣）。
+  // 進編輯模式時記住「這張訂單原本每個商品各訂了幾件」，算庫存夠不夠時要加回來。
+  var editingOriginalQtyByProduct = {};
 
   $('soldAt').value = new Date().toISOString().slice(0, 10);
 
@@ -1259,6 +1264,11 @@
       cart.forEach(function (item, idx) {
         // 庫存不夠還是可以照樣下單（代購本來就能預購），只是把話講清楚。
         var avail = item.productId ? stockOf(item.productId) : null;
+        // 編輯既有訂單時，/api/stock 查到的數字已經扣過這張訂單自己原本佔用的量，
+        // 要把原本的配額加回來才是「這張訂單如果照舊不動，庫存夠不夠」的正確基準。
+        if (avail !== null && editingId && item.productId && editingOriginalQtyByProduct[item.productId]) {
+          avail += editingOriginalQtyByProduct[item.productId];
+        }
         var over = avail !== null && item.qty > avail;
 
         var row = document.createElement('div');
@@ -1972,11 +1982,13 @@
     /* 訂單存進資料庫時是逐件展開的(一件一行)，讀回來編輯時要先把名稱/尺寸/成本/售價都一樣的合併回同一行、用數量顯示，
        不然同一個商品買了好幾件，編輯畫面會看到一堆一模一樣的重複行。 */
     cart = [];
+    editingOriginalQtyByProduct = {};
     (o.order_items || []).forEach(function (it) {
       var itemName = it.item_name, size = it.size || '', cost = Number(it.cost) || 0, soldPrice = Number(it.sold_price) || 0;
       var isGift = !!it.is_gift;
       // priced_item_id 要帶回來，不然編輯完存回去會變成手動商品、庫存就不扣了。
       var productId = it.priced_item_id || null;
+      if (productId) { editingOriginalQtyByProduct[productId] = (editingOriginalQtyByProduct[productId] || 0) + 1; }
       var existing = findCartEntry(productId, itemName, size, cost, soldPrice, isGift);
       if (existing) { existing.qty += 1; }
       else { cart.push({ productId: productId, itemName: itemName, size: size, photoUrl: it.photo_url || null, cost: cost, soldPrice: soldPrice, qty: 1, isGift: isGift }); }
@@ -2003,6 +2015,7 @@
 
   function exitEditMode() {
     editingId = null;
+    editingOriginalQtyByProduct = {};
     $('formTitle').textContent = '新增一筆訂單';
     $('editBanner').style.display = 'none';
     $('submitBtn').textContent = '✚ 送出訂單';
