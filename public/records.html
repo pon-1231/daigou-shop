@@ -609,6 +609,7 @@
         } catch (e) { showToast('還原失敗，請再試一次'); }
       });
       row.querySelector('[data-action="purge"]').addEventListener('click', async function () {
+        if (!confirm('確定要永久刪除「' + (o.customer_name || '這筆訂單') + '」嗎？這個動作沒辦法復原！')) return;
         try {
           var res = await fetch('/api/orders/' + o.id + '/permanent', { method: 'DELETE' });
           if (!res.ok) throw new Error();
@@ -1740,6 +1741,7 @@
 
       card.querySelector('[data-action="edit"]').addEventListener('click', function () { editOrder(o); });
       card.querySelector('[data-action="delete"]').addEventListener('click', async function () {
+        if (!confirm('確定要刪除「' + (o.customer_name || '這筆訂單') + '」嗎？會先移到下方「最近刪除的訂單」，還可以還原。')) return;
         try {
           var res = await fetch('/api/orders/' + o.id, { method: 'DELETE' });
           if (!res.ok) throw new Error();
