@@ -493,6 +493,13 @@
 <script>
 (function () {
   var $ = function (id) { return document.getElementById(id); };
+  // 數字輸入框如果正在focus，滑鼠滾輪滾過去會被瀏覽器當成「調整數值」，捲頁面很容易誤觸改到價格，
+  // 所以滾輪滾到數字輸入框上時直接把焦點移開，滾輪就只會正常捲頁、不會動到數字。
+  document.addEventListener('wheel', function (e) {
+    if (document.activeElement && document.activeElement.tagName === 'INPUT' && document.activeElement.type === 'number') {
+      document.activeElement.blur();
+    }
+  }, { passive: true });
   var fields = ['rmbPrice','rmbShip','fxRate','crossShip','packaging','paymentFee'];
   var slider = $('multiplierSlider');
   var manualPrice = $('manualPrice');
