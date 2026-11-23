@@ -202,9 +202,20 @@ function parseHandle(raw) {
 }
 
 function itemNoPrefix(rawName) {
-  const m = String(rawName || '').match(/^([A-Za-z]{1,3})(\d{1,3})[.．]\s*(.+)$/);
+  // 同一個編號底下如果商品庫塞了好幾個不同商品（例如 A12 底下有「信中花語-玫瑰」
+  // 跟「信中花語-向日葵」），賣貨便匯出的編號會多一段「-子編號」(例如 A12-2.)，
+  // 子編號對應的是商品庫名稱開頭手動加的「(1)」「(2)」排序前綴（跟 records.html/
+  // pricing.html 的 nameOrderPrefix() 同一套慣例），不是另一層獨立的語法。
+  const m = String(rawName || '').match(/^([A-Za-z]{1,3})(\d{1,3})(?:-(\d{1,2}))?[.．]\s*(.+)$/);
   if (!m) return null;
-  return { group: m[1].toUpperCase(), itemNo: Number(m[2]), remainder: m[3].trim() };
+  return { group: m[1].toUpperCase(), itemNo: Number(m[2]), subIndex: m[3] ? Number(m[3]) : null, remainder: m[4].trim() };
+}
+
+// 跟 records.html/pricing.html 的 nameOrderPrefix() 同一套規則：名稱開頭手動加的
+// 「(1)」「(2)」決定同一個 item_no 底下好幾個商品的排序/子編號。
+function nameOrderPrefix(name) {
+  const m = /^[（(]\s*(\d+)\s*[）)]/.exec(name || '');
+  return m ? Number(m[1]) : null;
 }
 
 function escapeRegex(s) {
@@ -266,9 +277,15 @@ function matchItem(rawItem, priceIndex, nameIndex, sortedNames) {
   if (!prefix) {
     return matchByName(rawItem.rawName, rawItem.unitPrice, nameIndex, sortedNames);
   }
-  const candidates = priceIndex[prefix.group + ':' + prefix.itemNo] || [];
+  let candidates = priceIndex[prefix.group + ':' + prefix.itemNo] || [];
   if (candidates.length === 0) {
     return { status: 'needs_review', reason: 'unknown_item_no', matched: null, suggestedId: null, candidates: [] };
+  }
+  // 「A12-2.」的 -2 是子編號，先用它把候選縮小到名稱開頭「(2)」的那個商品，
+  // 不然同一個 item_no 底下的好幾個不同商品會混在一起比對顏色/價格。
+  if (prefix.subIndex != null) {
+    const narrowed = candidates.filter((c) => nameOrderPrefix(c.name) === prefix.subIndex);
+    if (narrowed.length > 0) candidates = narrowed;
   }
   return buildCandidateMatch(candidates, prefix.remainder, rawItem.unitPrice);
 }

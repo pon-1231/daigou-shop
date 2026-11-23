@@ -331,8 +331,11 @@
     var photo = it.resolution ? it.resolution.photoUrl : null;
     var itemNoLabel = it.resolution && it.resolution.sortGroup && it.resolution.itemNo != null
       ? it.resolution.sortGroup + it.resolution.itemNo : null;
-    var cost = itemEffectiveCost(it);
-    var price = itemEffectivePrice(it);
+    // 這裡顯示的是「這一行總共」的成本/售價（單價 × 數量），不是單價——
+    // 不然訂單總額/淨利（用單價×數量算）跟這張卡片上的數字會對不起來，
+    // 使用者調整數量時只看得到數量變了、金額卻沒跟著變，會以為是算錯。
+    var cost = itemEffectiveCost(it) * it.qty;
+    var price = itemEffectivePrice(it) * it.qty;
     // 有串到商品庫、而且那個商品庫有開庫存追蹤的，才提醒「這筆會扣多少庫存」——
     // 手動輸入/沒追蹤庫存的商品沒有這個數字可以講。
     var stockProductId = it.resolution ? (it.resolution.priced_item_id || it.resolution.id) : null;
@@ -344,7 +347,7 @@
     html += '<span class="oi-nums">' + fmt(cost) + ' → ' + fmt(price) + '</span>';
     if (stockInfo) html += '<span class="oi-stock-note">此商品剩餘 ' + stockInfo.stock + ' 個，目前扣除 ' + it.qty + ' 個庫存</span>';
     html += '</div>';
-    html += '<input type="number" class="oi-qty-input" value="' + it.qty + '" min="1" title="數量（改小會自動拆成兩筆，方便分開選不同規格/贈品）">';
+    html += '<input type="number" class="oi-qty-input" value="' + it.qty + '" min="1" title="' + (it.addedManually ? '數量' : '數量（改小會自動拆成兩筆，方便分開選不同規格/贈品）') + '">';
     if (it.resolution) html += '<button type="button" class="oi-gift-btn' + (it.isGift ? ' active' : '') + '">' + (it.isGift ? '🎁 贈品中' : '🎁 設為贈品') + '</button>';
     if (lockedToCompact) html += '<button type="button" class="oi-edit-btn">編輯</button>';
     // 不是只有「新增商品」加的才能移除——改數量拆出來的那幾行、或賣貨便本來
@@ -555,7 +558,10 @@
       if (e.target.classList.contains('oi-qty-input') && e.type === 'change') {
         var newQty = Math.max(1, Math.round(Number(e.target.value)) || 1);
         var orderForQty = state.newOrders[oIdx];
-        if (newQty < it.qty) {
+        // 拆分是為了解決賣貨便解析出來的 qty（客人備註裡可能藏著「其實要分開選顏色」
+        // 的情況）。「新增商品」是使用者自己手動挑的，當下就知道規格，調降數量只是
+        // 單純改數量，不需要也不該拆出一行一模一樣的重複商品。
+        if (newQty < it.qty && !it.addedManually) {
           var remainder = it.qty - newQty;
           it.qty = newQty;
           var clone = JSON.parse(JSON.stringify(it));
