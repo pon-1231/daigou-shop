@@ -218,7 +218,9 @@ function buildCandidateMatch(candidates, remainder, unitPrice) {
     color: c.color || c.spec1_value || '',
     cost: Number(c.actual_cost) || 0,
     price: Number(c.final_price) || 0,
-    photoUrl: c.photo_url || null
+    photoUrl: c.photo_url || null,
+    sortGroup: c.sort_group || null,
+    itemNo: c.item_no != null ? c.item_no : null
   }));
 
   const colorMatches = candidateView.filter((c) => c.color && remainder.includes(c.color));

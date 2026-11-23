@@ -854,6 +854,10 @@
 
   function renderGallery() {
     var el = $('productGallery');
+    // 選商品的滾動框每次重畫都會被整個 innerHTML 換掉，scrollTop 會被重置成 0——
+    // 點一下清單後面的商品（例如飛機盒）畫面就會跳回最上面，很煩。重畫前後把
+    // scrollTop 記住再還原，點完商品可以留在原本看的地方。
+    var prevScrollTop = el.scrollTop;
     var term = ($('productSearch').value || '').trim().toLowerCase();
     var filtered = term
       ? allProducts.filter(function (p) { return (p.name || '').toLowerCase().indexOf(term) !== -1; })
@@ -861,10 +865,12 @@
 
     if (allProducts.length === 0) {
       el.innerHTML = '<p class="empty-state">還沒有已儲存的商品，可以用下面「手動新增」。</p>';
+      el.scrollTop = prevScrollTop;
       return;
     }
     if (filtered.length === 0) {
       el.innerHTML = '<p class="empty-state">找不到符合的商品。</p>';
+      el.scrollTop = prevScrollTop;
       return;
     }
 
@@ -877,6 +883,7 @@
       grid.className = 'gallery-group-grid';
       groupProducts(sortGroups[0].products).forEach(function (group) { grid.appendChild(buildGalleryCard(group)); });
       el.appendChild(grid);
+      el.scrollTop = prevScrollTop;
       return;
     }
 
@@ -893,6 +900,7 @@
       details.appendChild(grid);
       el.appendChild(details);
     });
+    el.scrollTop = prevScrollTop;
   }
 
   $('productSearch').addEventListener('input', renderGallery);

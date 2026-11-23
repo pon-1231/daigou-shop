@@ -177,3 +177,13 @@ DDL、資料稽核、搬家全部不需要使用者進 Supabase 網頁貼 SQL。
 - 修法：進編輯模式時（`editOrder()`）把「這張訂單原本每個商品各訂了幾件」記進 `editingOriginalQtyByProduct`，離開編輯模式（`exitEditMode()`）要清空。購物車渲染算 `avail` 時，如果是編輯模式且這個商品有原本的配額，就把配額加回去再跟 `item.qty` 比，這樣「維持原數量不動」永遠不會誤判，但如果編輯時真的把數量往上調到超過「原配額+目前庫存」，警示依然會正確跳出來。
 - 已用真實資料庫（紙箱庫存 7 → 下單扣 5 剩 2）驗證兩種情況：維持原數量 5 不跳警示；改成 8（超過原本配額 7）正確跳出「缺 1 個」。測試訂單事後刪乾淨。
 - **這個邏輯只套用在「編輯既有訂單」，新增訂單（包括 `import.html` 匯入流程走的都是全新 `POST /api/orders`）不受影響**，因為新訂單沒有「原本配額」這個概念，`stockOf()` 的即時數字本來就是對的比較基準。
+
+## 10. `import.html` 細節修正（2026-11-24 加的）
+
+**商品候選選單一定要顯示完整商品名稱，不能只看顏色+價格。** 真實資料裡同一個 `item_no`（如 A5）底下可能有兩個完全不同的商品（例如「哥德風叉子」跟「哥德風餐刀」），剛好同色同價——選單原本只顯示顏色+價格，這種情況下兩個選項長得一模一樣，使用者分不出來、感覺像「名稱不完整」。`oi-candidate-select` 的 `<option>` 文字改成「完整商品名稱（顏色）· 價格」，`itemCardHtml()` 也加回原始排序編號徽章（`sortGroup+itemNo`，例如「A19」），兩邊都串到 `priced_items.sort_group`/`item_no`，從後端 `candidateView`（`importFeebee.js` 的 `buildCandidateMatch`）一路透傳到前端的 `resolution.sortGroup`/`itemNo`——所有會建立 `resolution` 的路徑（自動比對、下拉選單選、圖片選圖面板選）都要記得帶這兩個欄位，漏一個那個路徑選出來的商品就不會有編號徽章。
+
+**價格一律用 `Math.round()` 顯示，不留小數點**：`import.html` 的 `fmt()` 原本沒有四捨五入（跟 `records.html`/`pricing.html` 的慣例不一樣），商品成本/售價如果是資料庫裡的原始浮點數（例如 `118.10699999999999`）就會整串顯示出來。手動輸入成本/售價欄位的預設值也補上 `Math.round()`，使用者看到的／沒特別去動的數字都會是整數。**實際存進 `order_items` 的 `cost`/`sold_price` 不受影響**——跟 `records.html` 的 `addProductToCart()` 一樣,是故意保留原始精度（只有畫面顯示跟使用者自己輸入的欄位要整數），不要為了這個需求去動 `buildItemsPayload()`。
+
+**選商品的圖片選圖面板（`#pickerGallery`）滾動位置要保留，點了商品不能跳回最上面**：這個容器是 `orderCardHtml()` 動態插進訂單卡片裡的 DOM，不是頁面載入時就固定存在的節點——任何觸發 `renderNewOrders()` 整個訂單列表重畫的操作（設贈品、改數量、選下拉選單……）都會把舊的 `#pickerGallery` 整個砍掉重建成一個全新、`scrollTop=0` 的容器。一開始想用 `'scroll'` 事件監聽器記錄捲動位置，但在測試環境裡發現**程式設定 `scrollTop` 不會可靠觸發 `'scroll'` 事件**（非同步派送，重畫往往比事件先發生），改成在真正造成節點被砍掉的那一刻（`renderNewOrders()` 的 `$('orderList').innerHTML = ...` 之前、`pickerSearch` 的 `input` 事件處理常式裡）同步讀一次 `el.scrollTop` 存進模組變數 `pickerGalleryScrollTop`，`renderPickerGallery()` 本身只負責還原、不要在裡面覆寫這個變數（它拿到的 `el` 常常已經是剛重建的新節點，讀到的會是 0，把前面存好的值蓋掉）。`records.html` 的 `#productGallery` 不會被外部重畫砍掉、是固定節點，所以那邊維持原本「函式自己存+還原」的簡單寫法就夠。
+
+**庫存提醒（「此商品剩餘 X 個，目前扣除 N 個庫存」）順便補了一個既有的時序 bug**：`/api/stock` 是在 `renderNewOrders()` 之後才打的，原本沒有任何東西在它回來之後重畫過畫面，導致剛解析完的當下庫存數字（跟圖庫的售完/剩餘標籤）都還沒出現，要等使用者隨便做點什麼觸發重畫才會補上來。現在 `/api/stock` 的 `.then()` 最後補一行 `renderNewOrders()`，解析完立刻就能看到庫存提醒。

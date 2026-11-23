@@ -47,12 +47,17 @@
   .oi-card .oi-placeholder { display: flex; align-items: center; justify-content: center; font-size: 16px; color: var(--ink-soft); }
   .oi-card .oi-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .oi-card .oi-name { font-size: 12.5px; }
+  .oi-card .oi-itemno {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 700; color: var(--ink-soft);
+    background: var(--bg-elevated); border: 1px solid var(--line-strong); border-radius: 4px; padding: 0 4px; margin-right: 4px;
+  }
   .oi-card .oi-size { font-size: 10.5px; color: var(--ink-soft); }
   .oi-card .oi-gift-tag {
     font-size: 10px; font-weight: 700; color: var(--accent); background: var(--accent-soft);
     border-radius: 4px; padding: 1px 5px; margin-left: 2px;
   }
   .oi-card .oi-nums { font-family: var(--font-mono); color: var(--ink-soft); font-size: 11px; }
+  .oi-card .oi-stock-note { font-size: 10.5px; color: var(--ink-soft); }
   .oi-row input.oi-qty-input { width: 48px; font-size: 12.5px; padding: 6px 4px; text-align: center; flex-shrink: 0; }
 
   .oc-repeat { font-size: 11.5px; color: var(--accent); font-weight: 600; margin-top: 4px; }
@@ -229,7 +234,7 @@
     setTimeout(function () { t.classList.remove('show'); }, 3200);
   }
 
-  function fmt(n) { return 'NT$' + (Number(n) || 0).toLocaleString(); }
+  function fmt(n) { return 'NT$' + Math.round(Number(n) || 0).toLocaleString(); }
 
   function addDays(dateStr, days) {
     var d = new Date(dateStr + 'T00:00:00');
@@ -287,6 +292,9 @@
           (stockData.items || []).forEach(function (it) {
             if (it.track_stock) state.stockById[it.id] = { stock: it.stock, low: it.low_stock, stockGroupId: it.stock_group_id };
           });
+          // 這支 /api/stock 比上面的 renderNewOrders() 晚回來，剛解析完畫面上看不到
+          // 庫存提醒／售完標籤——資料回來後要再畫一次才會補上去。
+          renderNewOrders();
         });
       })
       .catch(function (err) {
@@ -321,13 +329,20 @@
     var name = it.resolution ? it.resolution.name : it.rawName;
     var color = it.resolution ? it.resolution.color : '';
     var photo = it.resolution ? it.resolution.photoUrl : null;
+    var itemNoLabel = it.resolution && it.resolution.sortGroup && it.resolution.itemNo != null
+      ? it.resolution.sortGroup + it.resolution.itemNo : null;
     var cost = itemEffectiveCost(it);
     var price = itemEffectivePrice(it);
+    // 有串到商品庫、而且那個商品庫有開庫存追蹤的，才提醒「這筆會扣多少庫存」——
+    // 手動輸入/沒追蹤庫存的商品沒有這個數字可以講。
+    var stockProductId = it.resolution ? (it.resolution.priced_item_id || it.resolution.id) : null;
+    var stockInfo = stockProductId ? state.stockById[stockProductId] : null;
     var html = '<div class="oi-card">';
     html += photo ? '<img src="' + escapeHtml(photo) + '" alt="">' : '<div class="oi-placeholder">🖼️</div>';
     html += '<div class="oi-info">';
-    html += '<span class="oi-name">' + escapeHtml(name || '（尚未選擇商品）') + (color ? ' <span class="oi-size">（' + escapeHtml(color) + '）</span>' : '') + (it.isGift ? ' <span class="oi-gift-tag">贈品</span>' : '') + '</span>';
+    html += '<span class="oi-name">' + (itemNoLabel ? '<span class="oi-itemno">' + escapeHtml(itemNoLabel) + '</span>' : '') + escapeHtml(name || '（尚未選擇商品）') + (color ? ' <span class="oi-size">（' + escapeHtml(color) + '）</span>' : '') + (it.isGift ? ' <span class="oi-gift-tag">贈品</span>' : '') + '</span>';
     html += '<span class="oi-nums">' + fmt(cost) + ' → ' + fmt(price) + '</span>';
+    if (stockInfo) html += '<span class="oi-stock-note">此商品剩餘 ' + stockInfo.stock + ' 個，目前扣除 ' + it.qty + ' 個庫存</span>';
     html += '</div>';
     html += '<input type="number" class="oi-qty-input" value="' + it.qty + '" min="1" title="數量（改小會自動拆成兩筆，方便分開選不同規格/贈品）">';
     if (it.resolution) html += '<button type="button" class="oi-gift-btn' + (it.isGift ? ' active' : '') + '">' + (it.isGift ? '🎁 贈品中' : '🎁 設為贈品') + '</button>';
@@ -362,7 +377,10 @@
         html += '<option value="">— 選擇正確商品 —</option>';
         it.candidates.forEach(function (c) {
           var sel = currentId === c.id ? ' selected' : '';
-          html += '<option value="' + c.id + '" data-cost="' + c.cost + '" data-price="' + c.price + '" data-name="' + c.name + '" data-color="' + (c.color || '') + '" data-photo="' + (c.photoUrl || '') + '"' + sel + '>' + (c.color || '(無色)') + ' · ' + fmt(c.price) + '</option>';
+          // 同一個編號底下的候選商品不一定是同一個東西（例如同一個 item_no 下有
+          // 「叉子」跟「餐刀」兩種不同商品，剛好同色同價），只顯示顏色+價格會分不出來，
+          // 選單一定要把完整商品名稱也顯示出來，不能只看顏色。
+          html += '<option value="' + c.id + '" data-cost="' + c.cost + '" data-price="' + c.price + '" data-name="' + escapeHtml(c.name) + '" data-color="' + (c.color || '') + '" data-photo="' + (c.photoUrl || '') + '" data-sortgroup="' + (c.sortGroup || '') + '" data-itemno="' + (c.itemNo != null ? c.itemNo : '') + '"' + sel + '>' + escapeHtml(c.name) + (c.color ? '（' + escapeHtml(c.color) + '）' : '') + ' · ' + fmt(c.price) + '</option>';
         });
         html += '<option value="__manual__"' + (it.resolution && it.resolution.source === 'manual' ? ' selected' : '') + '>自己輸入（不連結商品庫）</option>';
         html += '</select>';
@@ -373,8 +391,8 @@
       var showManual = it.candidates.length === 0 || (it.resolution && it.resolution.source === 'manual');
       html += '<div class="oi-manual-fields" style="' + (showManual ? '' : 'display:none;') + '">';
       html += '<input type="text" class="oi-manual-name" placeholder="商品名稱" value="' + (it.resolution && it.resolution.name || it.rawName).replace(/"/g, '&quot;') + '">';
-      html += '<input type="number" class="oi-manual-cost" placeholder="成本" value="' + (it.resolution ? it.resolution.cost : '') + '">';
-      html += '<input type="number" class="oi-manual-price" placeholder="售價" value="' + (it.resolution ? it.resolution.price : it.unitPrice) + '">';
+      html += '<input type="number" class="oi-manual-cost" placeholder="成本" value="' + (it.resolution ? Math.round(it.resolution.cost) : '') + '">';
+      html += '<input type="number" class="oi-manual-price" placeholder="售價" value="' + Math.round(it.resolution ? it.resolution.price : it.unitPrice) + '">';
       html += '</div>';
     }
     html += '</div>';
@@ -435,6 +453,11 @@
   }
 
   function renderNewOrders() {
+    // 這行 innerHTML 重畫會把舊的 #pickerGallery 整個砍掉重建，舊節點上的
+    // scrollTop 說沒就沒了——一定要在砍之前、同步讀出目前捲到哪，不能靠
+    // 'scroll' 事件（它是非同步派送的，重畫往往比事件先發生，等於永遠讀不到）。
+    var oldGallery = document.getElementById('pickerGallery');
+    if (oldGallery) pickerGalleryScrollTop = oldGallery.scrollTop;
     $('newCount').textContent = state.newOrders.length + ' 筆';
     $('orderList').innerHTML = state.newOrders.map(orderCardHtml).join('');
     syncSelectAllCheckbox();
@@ -478,7 +501,8 @@
       it.resolution = { source: 'manual', name: it.rawName, cost: '', price: it.unitPrice };
     } else {
       it.resolved = true;
-      it.resolution = { source: 'matched', priced_item_id: opt.value, id: opt.value, name: opt.getAttribute('data-name'), color: opt.getAttribute('data-color'), cost: Number(opt.getAttribute('data-cost')), price: Number(opt.getAttribute('data-price')), photoUrl: opt.getAttribute('data-photo') || null };
+      var optItemNo = opt.getAttribute('data-itemno');
+      it.resolution = { source: 'matched', priced_item_id: opt.value, id: opt.value, name: opt.getAttribute('data-name'), color: opt.getAttribute('data-color'), cost: Number(opt.getAttribute('data-cost')), price: Number(opt.getAttribute('data-price')), photoUrl: opt.getAttribute('data-photo') || null, sortGroup: opt.getAttribute('data-sortgroup') || null, itemNo: optItemNo ? Number(optItemNo) : null };
       it.editing = false; // 選定商品後收合回鎖定顯示，避免後面不小心又點到選單
     }
     renderNewOrders();
@@ -603,7 +627,11 @@
     // 選圖面板現在是動態插進訂單卡片裡的，不是頁面載入時就固定存在的元素，
     // 不能在頁面一開始就綁事件，改成跟其他訂單列表裡的東西一樣用委派處理。
     if (e.target.id === 'pickerCancel' && e.type === 'click') { closePicker(); return; }
-    if (e.target.id === 'pickerSearch' && e.type === 'input') { renderPickerGallery(); return; }
+    if (e.target.id === 'pickerSearch' && e.type === 'input') {
+      pickerGalleryScrollTop = $('pickerGallery').scrollTop;
+      renderPickerGallery();
+      return;
+    }
     if (e.target.id === 'pickerSizeCancel' && e.type === 'click') { closePickerSizeView(); return; }
     if (e.target.id === 'pickerManualAdd' && e.type === 'click') { submitPickerManualAdd(); return; }
   }
@@ -795,6 +823,15 @@
     return html;
   }
 
+  // #pickerGallery 不是固定不變的節點——它是 orderCardHtml() 畫出來的，隨便一個
+  // 操作觸發 renderNewOrders() 整張重畫，就會變成全新、scrollTop=0 的容器，光是
+  // 在這個函式裡面存還原 scrollTop 沒用（存的時候元素早就已經是新的了）。要另外
+  // 用一個跨重畫存活的變數記住「使用者捲到哪」，每次重畫完都還原回去。
+  // pickerGalleryScrollTop 只能在「容器節點還沒被換掉」的那一刻去讀，讀太晚（例如
+  // 在這個函式自己裡面讀）常常已經是重畫完的新節點、scrollTop 必定是 0——所以捕捉
+  // 動作要放在真正造成節點被砍掉/清空的呼叫點（renderNewOrders 的 innerHTML 重畫、
+  // 搜尋框輸入事件），這個函式只負責「還原」，不要在這裡覆寫它。
+  var pickerGalleryScrollTop = 0;
   function renderPickerGallery() {
     var el = $('pickerGallery');
     var term = ($('pickerSearch').value || '').trim().toLowerCase();
@@ -802,10 +839,12 @@
 
     if (state.catalog.length === 0) {
       el.innerHTML = '<p class="empty-state">商品庫是空的，可以用下面「自己輸入」。</p>';
+      el.scrollTop = pickerGalleryScrollTop;
       return;
     }
     if (filtered.length === 0) {
       el.innerHTML = '<p class="empty-state">找不到符合的商品，可以用下面「自己輸入」。</p>';
+      el.scrollTop = pickerGalleryScrollTop;
       return;
     }
 
@@ -818,21 +857,22 @@
       grid.className = 'gallery-group-grid';
       groupProducts(sortGroups[0].products).forEach(function (group) { grid.appendChild(buildGalleryCard(group)); });
       el.appendChild(grid);
-      return;
+    } else {
+      sortGroups.forEach(function (sg) {
+        var details = document.createElement('details');
+        details.className = 'gallery-group';
+        details.open = true;
+        var summary = document.createElement('summary');
+        summary.textContent = sg.group + '（' + groupProducts(sg.products).length + '）';
+        details.appendChild(summary);
+        var grid = document.createElement('div');
+        grid.className = 'gallery-group-grid';
+        groupProducts(sg.products).forEach(function (group) { grid.appendChild(buildGalleryCard(group)); });
+        details.appendChild(grid);
+        el.appendChild(details);
+      });
     }
-    sortGroups.forEach(function (sg) {
-      var details = document.createElement('details');
-      details.className = 'gallery-group';
-      details.open = true;
-      var summary = document.createElement('summary');
-      summary.textContent = sg.group + '（' + groupProducts(sg.products).length + '）';
-      details.appendChild(summary);
-      var grid = document.createElement('div');
-      grid.className = 'gallery-group-grid';
-      groupProducts(sg.products).forEach(function (group) { grid.appendChild(buildGalleryCard(group)); });
-      details.appendChild(grid);
-      el.appendChild(details);
-    });
+    el.scrollTop = pickerGalleryScrollTop;
   }
   function closePickerSizeView() {
     $('pickerSizePicker').style.display = 'none';
@@ -932,6 +972,7 @@
   function openPicker(orderIdx, itemIdx) {
     state.picker.orderIdx = orderIdx;
     state.picker.itemIdx = itemIdx;
+    pickerGalleryScrollTop = 0;
     renderNewOrders();
     $('pickerSearch').value = '';
     $('pickerManualName').value = '';
@@ -981,7 +1022,9 @@
       name: product.name, color: color,
       cost: Number(product.actual_cost) || 0,
       price: Number(product.final_price) || 0,
-      photoUrl: product.photo_url || null
+      photoUrl: product.photo_url || null,
+      sortGroup: product.sort_group || null,
+      itemNo: product.item_no != null ? product.item_no : null
     });
   }
 
