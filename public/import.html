@@ -58,6 +58,7 @@
   }
   .oi-card .oi-nums { font-family: var(--font-mono); color: var(--ink-soft); font-size: 11px; }
   .oi-card .oi-stock-note { font-size: 10.5px; color: var(--ink-soft); }
+  .oi-card .oi-price-warn { font-size: 10.5px; color: var(--bad); font-weight: 600; }
   .oi-row input.oi-qty-input { width: 48px; font-size: 12.5px; padding: 6px 4px; text-align: center; flex-shrink: 0; }
 
   .oc-repeat { font-size: 11.5px; color: var(--accent); font-weight: 600; margin-top: 4px; }
@@ -346,6 +347,12 @@
     html += '<span class="oi-name">' + (itemNoLabel ? '<span class="oi-itemno">' + escapeHtml(itemNoLabel) + '</span>' : '') + escapeHtml(name || '（尚未選擇商品）') + (color ? ' <span class="oi-size">（' + escapeHtml(color) + '）</span>' : '') + (it.isGift ? ' <span class="oi-gift-tag">贈品</span>' : '') + '</span>';
     html += '<span class="oi-nums">' + fmt(cost) + ' → ' + fmt(price) + '</span>';
     if (stockInfo) html += '<span class="oi-stock-note">此商品剩餘 ' + stockInfo.stock + ' 個，目前扣除 ' + it.qty + ' 個庫存</span>';
+    // 編號+顏色對得上、只有價格跟商品庫不一致時，後端已經直接採用賣貨便這邊的
+    // 價格匯入（不卡人工確認），但還是要留一個不擋匯入的提示，讓使用者自己判斷
+    // 是賣場真的調過價，還是操作上漏了什麼（例如忘記把某樣東西設成贈品）。
+    if (it.resolution && it.resolution.priceMismatch) {
+      html += '<span class="oi-price-warn">⚠ 商品庫目前售價 ' + fmt(it.resolution.catalogPrice) + '，此筆以賣貨便價格 ' + fmt(itemEffectivePrice(it)) + ' 匯入</span>';
+    }
     html += '</div>';
     html += '<input type="number" class="oi-qty-input" value="' + it.qty + '" min="1" title="' + (it.addedManually ? '數量' : '數量（改小會自動拆成兩筆，方便分開選不同規格/贈品）') + '">';
     if (it.resolution) html += '<button type="button" class="oi-gift-btn' + (it.isGift ? ' active' : '') + '">' + (it.isGift ? '🎁 贈品中' : '🎁 設為贈品') + '</button>';

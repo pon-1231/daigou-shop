@@ -240,8 +240,16 @@ function buildCandidateMatch(candidates, remainder, unitPrice) {
   if (strongMatches.length === 1) {
     return { status: 'matched', reason: null, matched: strongMatches[0], suggestedId: strongMatches[0].id, candidates: candidateView };
   }
+  // 編號+顏色都只對到一個候選，只是價格跟商品庫對不起來——這種情況通常是賣場
+  // 調整過售價、但商品庫（或賣貨便那邊）還沒跟著更新，不是真的比對不準，不需要
+  // 卡成人工確認。改成直接採用、售價以賣貨便這次匯出的 unitPrice 為準（成本還是
+  // 用商品庫的 actual_cost，賣貨便沒有成本資訊），但標記 priceMismatch 讓前端用
+  // 不擋匯入的提示文字顯示出來，方便使用者自己判斷是不是真的調價、還是漏按贈品
+  // 之類的操作失誤。
   if (colorMatches.length === 1) {
-    return { status: 'needs_review', reason: 'price_mismatch', matched: null, suggestedId: colorMatches[0].id, candidates: candidateView };
+    const base = colorMatches[0];
+    const resolved = Object.assign({}, base, { price: unitPrice, priceMismatch: true, catalogPrice: base.price });
+    return { status: 'matched', reason: 'price_mismatch', matched: resolved, suggestedId: base.id, candidates: candidateView };
   }
   if (colorMatches.length > 1) {
     return { status: 'needs_review', reason: 'ambiguous_color', matched: null, suggestedId: null, candidates: candidateView };
