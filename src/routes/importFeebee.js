@@ -222,19 +222,43 @@ function escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function buildCandidateMatch(candidates, remainder, unitPrice) {
-  const candidateView = candidates.map((c) => ({
-    id: c.id,
-    name: c.name,
-    color: c.color || c.spec1_value || '',
-    cost: Number(c.actual_cost) || 0,
-    price: Number(c.final_price) || 0,
-    photoUrl: c.photo_url || null,
-    sortGroup: c.sort_group || null,
-    itemNo: c.item_no != null ? c.item_no : null
-  }));
+// 有些商品只用 color 欄位存顏色；有些商品（例如同一個 item_no 底下同時有
+// 「款式」跟「顏色」兩種變化）實際上是把「款式」存進 color/spec1_value，
+// 真正的顏色反而存在 sizes/spec2_value——欄位怎麼用要看商品當初怎麼建。
+// 只看 c.color 會漏掉真正的顏色資訊，候選清單上看起來只有款式、沒有顏色，
+// 使用者會分不出到底哪個對應哪個顏色。這裡把「這個候選商品所有有填的
+// 描述欄位」去重後全部收集起來，缺一個都不行。
+function descriptorsOf(c) {
+  const descs = [];
+  [c.color, c.sizes, c.spec1_value, c.spec2_value].forEach((v) => {
+    const t = (v || '').toString().trim();
+    if (t && descs.indexOf(t) === -1) descs.push(t);
+  });
+  return descs;
+}
 
-  const colorMatches = candidateView.filter((c) => c.color && remainder.includes(c.color));
+function buildCandidateMatch(candidates, remainder, unitPrice) {
+  const candidateView = candidates.map((c) => {
+    const descs = descriptorsOf(c);
+    return {
+      id: c.id,
+      name: c.name,
+      // 顯示/比對都用「完整」描述（可能是款式+顏色兩段），不是只挑一個欄位，
+      // 不然候選選單上會看不出顏色，使用者沒辦法選。
+      color: descs.join('・'),
+      descriptors: descs,
+      cost: Number(c.actual_cost) || 0,
+      price: Number(c.final_price) || 0,
+      photoUrl: c.photo_url || null,
+      sortGroup: c.sort_group || null,
+      itemNo: c.item_no != null ? c.item_no : null
+    };
+  });
+
+  // 候選的「每一段」描述都要在賣貨便原始文字裡找得到，才算這個候選對得上——
+  // 只要求「其中一段」對得上的話，同一個編號下不同款式但顏色剛好一樣的候選
+  // 會全部誤判成候選，反而製造新的「比對到多個顏色候選」假歧義。
+  const colorMatches = candidateView.filter((c) => c.descriptors.length > 0 && c.descriptors.every((d) => remainder.includes(d)));
   const strongMatches = colorMatches.filter((c) => Math.abs(c.price - unitPrice) < 0.01);
 
   if (strongMatches.length === 1) {
