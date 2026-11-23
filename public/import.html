@@ -237,9 +237,13 @@
 
   function fmt(n) { return 'NT$' + Math.round(Number(n) || 0).toLocaleString(); }
 
+  // 不能用 new Date(dateStr + 'T00:00:00') 再 toISOString()：沒帶時區的日期字串會被當成
+  // 瀏覽器/伺服器的本地時區解析，本地時區跟 UTC 不同時，轉回 ISO 字串會跨到前一天或後一天
+  // （站上之前 formatDateTime() 也踩過同一種時區 bug）。改成全程用 Date.UTC() 算，
+  // 不經過任何本地時區轉換，純粹當作日曆日期加減。
   function addDays(dateStr, days) {
-    var d = new Date(dateStr + 'T00:00:00');
-    d.setDate(d.getDate() + (Number(days) || 0));
+    var parts = dateStr.split('-').map(Number);
+    var d = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2] + (Number(days) || 0)));
     return d.toISOString().slice(0, 10);
   }
 
